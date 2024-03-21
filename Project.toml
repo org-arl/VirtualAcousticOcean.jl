@@ -1,0 +1,7 @@
+name = "VirtualAcousticOcean"
+uuid = "629e117c-1786-4222-ab4a-1acab234d923"
+authors = ["Mandar Chitre <mandar@nus.edu.sg>"]
+version = "0.1.0"
+
+[deps]
+UnderwaterAcoustics = "0efb1f7a-1ce7-46d2-9f48-546a4c8fbb99"
