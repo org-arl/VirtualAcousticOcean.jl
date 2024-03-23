@@ -1,23 +1,50 @@
+################################################################################
+### types
+
+"""
+`RX` represents a reception of signal `x` at time index `t`.
+"""
 struct RX
   t::Int
   x::Vector{Float32}
 end
 
-Base.firstindex(rx::RX) = rx.t
-Base.lastindex(rx::RX) = rx.t + length(rx.x) - 1
-
-struct AcousticTape
+"""
+`SignalTape` stores a series of receptions at various times.
+"""
+struct SignalTape
   rxs::Vector{RX}
 end
 
-AcousticTape() = AcousticTape(RX[])
+SignalTape() = SignalTape(RX[])
 
-function Base.push!(tape::AcousticTape, t, x)
+################################################################################
+### SignalTape methods
+
+"""
+    push!(tape::SignalTape, t, x)
+
+Add a reception of signal `x` at time index `t` to a signal tape.
+"""
+function Base.push!(tape::SignalTape, t, x)
   push!(tape.rxs, RX(t, x))
   tape
 end
 
-function Base.read(tape::AcousticTape, t, n; purge=true)
+"""
+    read(tape::SignalTape, t, n; purge=true)
+
+Get `n` samples of signal received starting time index `t` taking into account
+all signal receptions stored in the tape.
+
+If `purge` is set to `true`, signal receptions ending from before time `t+n-1`
+are dropped after reading the tape. This  is useful for real-time applications
+where new receptions are added to the tape in chronological order, and the
+tape is read back also in chronological order. Once read, receptions ending
+before the end time of the last read signal are no longer needed and can be
+purged to conserve memory.
+"""
+function Base.read(tape::SignalTape, t, n; purge=true)
   x = zeros(Float32, n)
   for rx in tape.rxs
     i = firstindex(rx) - t + 1
@@ -35,7 +62,18 @@ function Base.read(tape::AcousticTape, t, n; purge=true)
   clamp.(x, -1.0f0, 1.0f0)
 end
 
-function purge!(tape::AcousticTape, t)
+"""
+    purge!(tape::SignalTape, t)
+
+Remove signals ending before time `t` from the signal tape.
+"""
+function purge!(tape::SignalTape, t)
   filter!(rx -> lastindex(rx) ≥ t, tape.rxs)
   tape
 end
+
+################################################################################
+### RX methods
+
+Base.firstindex(rx::RX) = rx.t
+Base.lastindex(rx::RX) = rx.t + length(rx.x) - 1

@@ -1,11 +1,11 @@
 module VirtualAcousticOcean
 
-# common types
+### common types
 const Pos3D = NTuple{3,Float64}
 const Time = UInt64
 
-# code modules
-include("sim.jl")
+### code modules
 include("tape.jl")
+include("sim.jl")
 
 end # module
