@@ -1,4 +1,5 @@
 using UnderwaterAcoustics
+import UnderwaterAcoustics: environment
 
 export Simulation, addnode!
 
@@ -104,6 +105,7 @@ function Base.run(sim::Simulation)
 end
 
 function _run(sim::Simulation, task::SimTask)
+  sf = 10 ^ (sim.rxref / 20)
   while task.t0 > 0
     Δt = task.t0 + (task.t / sim.irate) - time()
     Δt > 0 && sleep(Δt)
@@ -111,8 +113,8 @@ function _run(sim::Simulation, task::SimTask)
       x = Matrix{Float32}(undef, sim.iblksize, length(node.tapes))
       for i ∈ eachindex(node.tapes)
         x[:,i] .= read(node.tapes[i], task.t, sim.iblksize)
+        x[:,i] .+= sf * real(record(noise(environment(sim.model)), sim.iblksize/sim.irate, sim.irate))
       end
-      # TODO: add noise to x
       stream(sim, node, task.t, x)
     end
     task.t += sim.iblksize
@@ -156,6 +158,8 @@ function Base.close(sim::Simulation, node::Node)
   # TODO
 end
 
+dbg = Float32[]
+
 """
     stream(sim::Simulation, node::Node, t, x)
 
@@ -165,6 +169,8 @@ channels.
 """
 function stream(sim::Simulation, node::Node, t, x)
   # TODO
+  @show t
+  append!(dbg, x[:,1])
 end
 
 """
@@ -174,6 +180,7 @@ Transmit signal `x` from `node` at time index `t`. The transmitter is assumed to
 half duplex and does not recieve its own transmission.
 """
 function transmit(sim::Simulation, node::Node, t, x)
+  node.mute && return
   fs = sim.irate
   if sim.orate != fs
     n = round(Int, sim.orate/sim.irate)
@@ -184,11 +191,13 @@ function transmit(sim::Simulation, node::Node, t, x)
   rxnodes = filter(n -> n != node, sim.nodes)
   rx = mapreduce(n -> [AcousticReceiver((n.pos .+ p)...) for p ∈ n.relpos], vcat, rxnodes)
   arr = [arrivals(sim.model, tx1, rx1) for tx1 ∈ tx, rx1 ∈ rx]
-  y = UnderwaterAcoustics.Recorder(nothing, tx, rx, arr)(x; fs, reltime=false)
+  sf = 10 ^ (sim.txref / 20)
+  y = UnderwaterAcoustics.Recorder(nothing, tx, rx, arr)(sf * x; fs, reltime=false)
   j = 1
+  sf = 10 ^ (sim.rxref / 20)
   for node ∈ rxnodes
     for tape ∈ node.tapes
-      push!(tape, t, y[:,j])
+      push!(tape, t, sf * y[:,j])
       j += 1
     end
   end
