@@ -1,7 +1,7 @@
 using UnderwaterAcoustics
 import UnderwaterAcoustics: environment
 
-export Simulation, addnode!
+export Simulation, addnode!, transmit, record, stop
 
 ################################################################################
 ### types
@@ -20,6 +20,7 @@ mutable struct Node
   seqno::UInt64                 # input (ADC) stream block sequence number
   obuf::Matrix{Float32}         # output signal buffer (DAC)
   tapes::Vector{SignalTape}     # signal tape for each hydrophone
+  observer::Any                 # vector to store signal or streaming callback
 end
 
 """
@@ -82,7 +83,7 @@ function addnode!(sim::Simulation, nodepos::Pos3D, baseport; relpos=[(0.0, 0.0, 
   sim.task.task === nothing || error("Cannot add node to running simulation")
   obuf = Matrix{Float32}(undef, 0, ochannels)
   tapes = [SignalTape() for _ ∈ 1:length(relpos)]
-  node = Node(nodepos, relpos, ochannels, baseport, 0.0, 0.0, false, 0, obuf, tapes)
+  node = Node(nodepos, relpos, ochannels, baseport, 0.0, 0.0, false, 0, obuf, tapes, nothing)
   push!(sim.nodes, node)
   length(sim.nodes)
 end
@@ -100,7 +101,7 @@ function Base.run(sim::Simulation)
   for n ∈ sim.nodes
     run(sim, n)
   end
-  sim.task.task = @async _run(sim, sim.task)
+  sim.task.task = errormonitor(@async _run(sim, sim.task))
   nothing
 end
 
@@ -158,8 +159,6 @@ function Base.close(sim::Simulation, node::Node)
   # TODO
 end
 
-dbg = Float32[]
-
 """
     stream(sim::Simulation, node::Node, t, x)
 
@@ -169,8 +168,49 @@ channels.
 """
 function stream(sim::Simulation, node::Node, t, x)
   # TODO
-  @show t
-  append!(dbg, x[:,1])
+  if node.observer !== nothing
+    if node.observer isa Vector{Float32}
+      append!(node.observer, vec(x))
+    else
+      @invokelatest node.observer(sim, node, t, x)
+    end
+  end
+end
+
+"""
+    record(sim::Simulation, node::Node, duration)
+
+Record signals from all hydrophones on `node` for `duration` seconds.
+"""
+function UnderwaterAcoustics.record(sim::Simulation, node::Node, duration)
+  buf = Float32[]
+  node.observer = buf
+  sleep(duration)
+  node.observer = nothing
+  reshape(permutedims(reshape(buf, sim.iblksize, length(node.tapes), :), (1,3,2)), :, length(node.tapes))
+end
+
+"""
+    record(sim::Simulation, node::Node)
+
+Start recording signals from all hydrophones on `node`. Call `stop()` to stop
+the recording.
+"""
+function UnderwaterAcoustics.record(sim::Simulation, node::Node)
+  node.observer = Float32[]
+  nothing
+end
+
+"""
+    stop(sim::Simulation, node::Node)
+
+Stop recording signals on `node` and return the recorded signal.
+"""
+function stop(sim::Simulation, node::Node)
+  buf = node.observer
+  node.observer = nothing
+  buf isa AbstractVector{Float32} || return nothing
+  reshape(permutedims(reshape(buf, sim.iblksize, length(node.tapes), :), (1,3,2)), :, length(node.tapes))
 end
 
 """
