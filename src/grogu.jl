@@ -92,16 +92,18 @@ function _command(proto::GroguDaemon, from, cmd)
     set!(proto.client, :iseqno, 0)
   elseif action == "istart"
     port = cmd["port"]
-    istart(proto.client, (t, seqno, data) -> _idata(proto, from.host, port, t, seqno, data), get(cmd, "blocks", 0))
+    istart(proto.client,
+      (t, seqno, data) -> _idata(proto, from.host, port, t, seqno, data), get(cmd, "blocks", 0)
+    )
   elseif action == "istop"
     istop(proto.client)
   elseif action == "oclear"
     empty!(proto.obuf)
   elseif action == "ostart"
-    # TODO: support events
-    ostart(proto.client, proto.obuf, get(cmd, "time", 0))
+    ostart(proto.client, proto.obuf, get(cmd, "time", 0),
+      (t, ev) -> send(proto.csock, from.host, from.port, """{"event": "$ev", "time": $t $id}\n""")
+    )
   elseif action == "ostop"
-    # TODO: support events
     ostop(proto.client)
   elseif action == "get"
     k = Symbol(cmd["param"])

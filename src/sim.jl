@@ -44,6 +44,7 @@ Base.@kwdef struct Simulation{T}
   txref::Float64 = 185.0                # dB re µPa @ 1m
   rxref::Float64 = -190.0               # dB re 1/µPa
   task::SimTask = SimTask(0.0, 0, nothing)
+  timers::Vector{Tuple{Int,Any}} = Tuple{Int,Any}[]
 end
 
 ################################################################################
@@ -115,6 +116,10 @@ function _run(sim::Simulation, task::SimTask)
       stream(sim, node, task.t, x)
     end
     task.t += sim.iblksize
+    while !isempty(sim.timers) && sim.timers[1][1] ≤ task.t
+      _, callback = popfirst!(sim.timers)
+      @invokelatest callback(task.t)
+    end
   end
 end
 
@@ -133,6 +138,32 @@ function Base.close(sim::Simulation)
   empty!(sim.nodes)
   nothing
 end
+
+"""
+    schedule(sim::Simulation, t, callback)
+
+Schedule a `callback` to be triggered at simulation time index `t`. Returns the
+number of scheduled callbacks.
+"""
+function Base.schedule(sim::Simulation, t, callback)
+  push!(sim.timers, (t, callback))
+  sort!(sim.timers; by=x->x.t)
+  length(sim.timers)
+end
+
+"""
+    time_µs(sim::Simulation, t)
+
+Convert time from samples to microseconds.
+"""
+time_µs(sim::Simulation, t) = round(Int, t / sim.irate * 1000000)
+
+"""
+    time_samples(sim::Simulation, t)
+
+Convert time from microseconds to samples.
+"""
+time_samples(sim::Simulation, t) = round(Int, t / 1000000 * sim.irate)
 
 ################################################################################
 ### Node methods
@@ -270,13 +301,18 @@ function istop((sim, node)::Tuple{Simulation,Node})
 end
 
 """
-    ostart(client, x::Matrix{Float32}, t=0)
+    ostart(client, x::Matrix{Float32}, t, callback)
 
-Start DAC output. If time `t` is in the past, output starts immediately.
+Start DAC output. If time `t` is in the past, output starts immediately. The
+`callback(t, event)` is called when the transmission starts and ends with time
+`t` (in mircoseconds) and `event` strings `"ostart"` or `"ostop"`.
 """
-function ostart((sim, node)::Tuple{Simulation,Node}, x::Matrix{Float32}, t=0)
-  t = round(Int, t / 1000000 * sim.irate)
-  transmit(sim, node, t, x)
+function ostart((sim, node)::Tuple{Simulation,Node}, x::Matrix{Float32}, t, callback)
+  ti = time_samples(sim, t)
+  ti = max(ti, node.task.t)
+  transmit(sim, node, ti, x)
+  schedule(sim, ti, t -> callback(t, "ostart"))
+  schedule(sim, ti + size(x,1), t -> callback(t, "ostop"))
 end
 
 """
