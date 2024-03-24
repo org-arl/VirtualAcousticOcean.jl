@@ -9,7 +9,7 @@ export Simulation, addnode!, transmit, record, stop
 """
 Simulated acoustic node.
 """
-mutable struct Node
+mutable struct Node{T}
   pos::Pos3D                    # nominal (x, y, z) position of node
   relpos::Vector{Pos3D}         # relative position of transducers/hydrophones wrt node
   ochannels::Int                # number of output channels
@@ -18,8 +18,7 @@ mutable struct Node
   mute::Bool                    # is node muted?
   seqno::UInt64                 # input (ADC) stream block sequence number
   tapes::Vector{SignalTape}     # signal tape for each hydrophone
-  proto::Any                    # protocol implementation
-  observer::Any                 # vector to store signal or streaming callback
+  conn::Union{Nothing,T}        # streaming protocol connector
 end
 
 """
@@ -80,7 +79,8 @@ are assumed to be receive-only channels.
 function addnode!(sim::Simulation, nodepos::Pos3D, baseport; relpos=[(0.0, 0.0, 0.0)], ochannels=1)
   sim.task.task === nothing || error("Cannot add node to running simulation")
   tapes = [SignalTape() for _ ∈ 1:length(relpos)]
-  node = Node(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, baseport, nothing)
+  node = Node{GroguDaemon}(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, nothing)
+  node.conn = GroguDaemon((sim, node), baseport)
   push!(sim.nodes, node)
   length(sim.nodes)
 end
@@ -147,7 +147,7 @@ number of scheduled callbacks.
 """
 function Base.schedule(sim::Simulation, t, callback)
   push!(sim.timers, (t, callback))
-  sort!(sim.timers; by=x->x.t)
+  sort!(sim.timers; by=x->x[1])
   length(sim.timers)
 end
 
@@ -174,10 +174,7 @@ time_samples(sim::Simulation, t) = round(Int, t / 1000000 * sim.irate)
 Start listening for UDP commands/data for `node`.
 """
 function Base.run(sim::Simulation, node::Node)
-  if node.proto isa Integer
-    # TODO: provide a way to set host or other protocols
-    node.proto = GroguDaemon((sim, node), node.proto)
-  end
+  run(node.conn)
 end
 
 """
@@ -186,9 +183,9 @@ end
 Stop listening for UDP commands/data for `node`.
 """
 function Base.close(sim::Simulation, node::Node)
-  if !(node.proto isa Integer) && node.proto !== nothing
-    close(node.proto)
-    node.proto = nothing
+  if node.conn !== nothing
+    close(node.conn)
+    node.conn = nothing
   end
 end
 
@@ -200,50 +197,10 @@ signal (`Float32` matrix) with `sim.iblksize` samples and `length(node.relpos)`
 channels.
 """
 function stream(sim::Simulation, node::Node, t, x)
-  # TODO
-  if node.observer !== nothing
-    if node.observer isa Vector{Float32}
-      append!(node.observer, vec(x))
-    else
-      @invokelatest node.observer(sim, node, t, x)
-    end
-  end
-end
-
-"""
-    record(sim::Simulation, node::Node, duration)
-
-Record signals from all hydrophones on `node` for `duration` seconds.
-"""
-function UnderwaterAcoustics.record(sim::Simulation, node::Node, duration)
-  buf = Float32[]
-  node.observer = buf
-  sleep(duration)
-  node.observer = nothing
-  reshape(permutedims(reshape(buf, sim.iblksize, length(node.tapes), :), (1,3,2)), :, length(node.tapes))
-end
-
-"""
-    record(sim::Simulation, node::Node)
-
-Start recording signals from all hydrophones on `node`. Call `stop()` to stop
-the recording.
-"""
-function UnderwaterAcoustics.record(sim::Simulation, node::Node)
-  node.observer = Float32[]
-  nothing
-end
-
-"""
-    stop(sim::Simulation, node::Node)
-
-Stop recording signals on `node` and return the recorded signal.
-"""
-function stop(sim::Simulation, node::Node)
-  buf = node.observer
-  node.observer = nothing
-  buf isa AbstractVector{Float32} || return nothing
-  reshape(permutedims(reshape(buf, sim.iblksize, length(node.tapes), :), (1,3,2)), :, length(node.tapes))
+   if node.conn !== nothing
+    stream(node.conn, t, node.seqno, x)
+    node.seqno += 1
+   end
 end
 
 """
@@ -281,47 +238,18 @@ end
 ### Node protocol interface methods
 
 """
-    istart(client, callback, blocks=0)
+    transmit(client, t, x::Matrix{Float32}, id)
 
-Start ADC data stream. `callback(timestamp::UInt64, seqno::UInt32, data::Matrix{Float32})`
-is called for ADC data block, where `timestamp` is in microseconds. If the number
-of `blocks` is 0, streams forever, otherwise streams for `blocks`.
+Start DAC output. If time `t` is in the past, output starts immediately. `id`
+is an opaque identifier for the transmission to be passed back during transmission
+start/stop events.
 """
-function istart((sim, node)::Tuple{Simulation,Node}, callback, blocks=0)
-  # TODO
-end
-
-"""
-    istop(client)
-
-Stop ADC data stream.
-"""
-function istop((sim, node)::Tuple{Simulation,Node})
-  # TODO
-end
-
-"""
-    ostart(client, x::Matrix{Float32}, t, callback)
-
-Start DAC output. If time `t` is in the past, output starts immediately. The
-`callback(t, event)` is called when the transmission starts and ends with time
-`t` (in mircoseconds) and `event` strings `"ostart"` or `"ostop"`.
-"""
-function ostart((sim, node)::Tuple{Simulation,Node}, x::Matrix{Float32}, t, callback)
+function transmit((sim, node)::Tuple{Simulation,Node}, t, x, id)
   ti = time_samples(sim, t)
-  ti = max(ti, node.task.t)
+  ti = max(ti, sim.task.t)
   transmit(sim, node, ti, x)
-  schedule(sim, ti, t -> callback(t, "ostart"))
-  schedule(sim, ti + size(x,1), t -> callback(t, "ostop"))
-end
-
-"""
-    ostop(client)
-
-Stop DAC output.
-"""
-function ostop((sim, node)::Tuple{Simulation,Node})
-  # do nothing, as simulator does not support stopping transmission
+  schedule(sim, ti, t -> node.conn === nothing || event(node.conn, t, "ostart", id))
+  schedule(sim, ti + size(x,1), t -> node.conn === nothing || event(node.conn, t, "ostop", id))
 end
 
 """
@@ -341,7 +269,7 @@ function Base.get((sim, node)::Tuple{Simulation,Node}, k::Symbol)
   k === :orates && return [sim.orate]
   k === :ochannels && return node.ochannels
   k === :ogain && return node.ogain
-  k === :omute && return node.omute
+  k === :omute && return node.mute
   nothing
 end
 
@@ -356,7 +284,7 @@ function set!((sim, node)::Tuple{Simulation,Node}, k::Symbol, v)
   elseif k === :ogain
     node.ogain = v
   elseif k === :omute
-    node.omute = v
+    node.mute = v
   elseif k === :iseqno
     node.seqno = 0
   end

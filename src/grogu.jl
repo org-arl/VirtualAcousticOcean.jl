@@ -6,11 +6,17 @@ using JSON
 
 const OBUFSIZE = 1920000        # DAC samples
 
-struct GroguDaemon{T}
-  client::T                     # opaque client handle
-  csock::UDPSocket              # UDP command socket
-  dsock::UDPSocket              # UDP data socket
-  obuf::Vector{Float32}         # output signal buffer (DAC)
+mutable struct GroguDaemon
+  const client::Any               # opaque client handle
+  const csock::UDPSocket          # UDP command socket
+  const dsock::UDPSocket          # UDP data socket
+  const baseport::Int             # UDP base port number
+  const ipaddr::IPAddr            # IP address to bind to
+  const obuf::Vector{Float32}     # output signal buffer (DAC)
+  chost::Union{IPAddr,Nothing}    # IP address for peer sending commands
+  cport::Int                      # peer's command port
+  dhost::Union{IPAddr,Nothing}    # IP address to stream data to
+  dport::Int                      # port number to stream data to
 end
 
 struct GroguDataHeader
@@ -27,108 +33,147 @@ end
     GroguDaemon(client, baseport)
     GroguDaemon(client, baseport, ipaddr)
 
-Start Grogu daemon on UDP ports `baseport` and `baseport+1`. If IP address is
+Create Grogu daemon to run on UDP ports `baseport` and `baseport+1`. If IP address is
 not specified, daemon only binds to localhost. The `client` must support the
 protocol interface methods (see `Node` for details).
 """
 function GroguDaemon(client, baseport::Int, ipaddr::IPAddr=Sockets.localhost)
-  csock = UDPSocket()
-  bind(csock, ipaddr, baseport) || error("Unable to bind to $ipaddr:$baseport")
-  dsock = UDPSocket()
-  bind(dsock, ipaddr, baseport+1) || error("Unable to bind to $ipaddr:$(baseport+1)")
-  proto = GroguDaemon(client, csock, dsock, Float32[])
+  GroguDaemon(client, UDPSocket(), UDPSocket(), baseport, ipaddr, Float32[], nothing, 0, nothing, 0)
+end
+
+"""
+    run(conn::GroguDaemon)
+
+Start Grogu daemon.
+"""
+function Base.run(conn::GroguDaemon)
+  bind(conn.csock, conn.ipaddr, conn.baseport) || error("Unable to bind to $(conn.ipaddr):$(conn.baseport)")
+  bind(conn.dsock, conn.ipaddr, conn.baseport+1) || error("Unable to bind to $(conn.ipaddr):$(conn.baseport+1)")
   @async begin
     try
-      while isopen(csock)
-        from, bytes = recvfrom(csock)
+      while isopen(conn.csock)
+        from, bytes = recvfrom(conn.csock)
         s = strip(String(bytes))
         length(s) == 0 && continue
         try
           json = JSON.parse(s)
-          _command(proto, from, json)
+          _command(conn, from, json)
         catch ex
-          @warn "Bad command: $s" ex
+          @warn "Bad command: $s" exception=(ex, catch_backtrace())
         end
       end
     catch ex
       ex isa EOFError || @warn "$ex"
-      close(csock)
-      close(dsock)
+      close(conn.csock)
+      close(conn.dsock)
     end
   end
   @async begin
     try
-      while isopen(dsock)
-        _odata(proto, recv(dsock))
+      while isopen(conn.dsock)
+        _odata(conn, recv(conn.dsock))
       end
     catch ex
       ex isa EOFError || @warn "$ex"
-      close(csock)
-      close(dsock)
+      close(conn.csock)
+      close(conn.dsock)
     end
   end
-  proto
 end
 
 """
-    close(proto::GroguDaemon)
+    close(conn::GroguDaemon)
 
 Close grogu daemon.
 """
-function Base.close(proto::GroguDaemon)
-  close(proto.csock)
-  close(proto.dsock)
+function Base.close(conn::GroguDaemon)
+  close(conn.csock)
+  close(conn.dsock)
   nothing
 end
 
+"""
+    stream(conn::GroguDaemon, t, seqno, data)
+
+Stream data over connection.
+"""
+function stream(conn::GroguDaemon, t, seqno, data)
+  if conn.dport > 0
+    hdr = GroguDataHeader(hton(UInt64(t)), hton(UInt32(seqno)), hton(UInt16(size(data,1))), hton(UInt16(size(data,2))))
+    bytes = vcat(reinterpret(UInt8, [hdr]), reinterpret(UInt8, hton.(data)))
+    send(conn.dsock, conn.dhost, conn.dport, bytes)
+  end
+end
+
+"""
+    event(conn::GroguDaemon, t, ev, id)
+
+Send event `ev` at time `t` with optional `id` over connection.
+"""
+function event(conn::GroguDaemon, t, ev, id)
+  ntf = Dict{String,Any}()
+  ntf["event"] = ev
+  ntf["time"] = t
+  id === nothing || (ntf["id"] = id)
+  @info JSON.json(ntf)
+  send(conn.csock, conn.chost, conn.cport, JSON.json(ntf) * "\n")
+end
+
 # called when we receive a command
-function _command(proto::GroguDaemon, from, cmd)
+function _command(conn::GroguDaemon, from, cmd)
+  @info cmd
   action = cmd["action"]
-  id = "id" ∈ keys(cmd) ? ", id: \"$(cmd["id"])\"" : ""
   if action == "version"
     ver = pkgversion(@__MODULE__)
-    send(proto.csock, from.host, from.port, """{"name": "VirtualAcousticOcean", "version": "$ver", "protocol": "0.1.0" $id}\n""")
+    rsp = Dict{String,Any}()
+    rsp["name"] = "VirtualAcousticOcean"
+    rsp["version"] = "$ver"
+    rsp["protocol"] = "0.1.0"
+    "id" ∈ keys(cmd) && (rsp["id"] = cmd["id"])
+    @info JSON.json(rsp)
+    send(conn.csock, from.host, from.port, JSON.json(rsp) * "\n")
   elseif action == "ireset"
-    set!(proto.client, :iseqno, 0)
+    set!(conn.client, :iseqno, 0)
   elseif action == "istart"
-    port = cmd["port"]
-    istart(proto.client,
-      (t, seqno, data) -> _idata(proto, from.host, port, t, seqno, data), get(cmd, "blocks", 0)
-    )
+    conn.dhost = from.host
+    conn.dport = cmd["port"]
   elseif action == "istop"
-    istop(proto.client)
+    conn.dport = 0
+    conn.dhost = nothing
   elseif action == "oclear"
-    empty!(proto.obuf)
+    empty!(conn.obuf)
   elseif action == "ostart"
-    ostart(proto.client, proto.obuf, get(cmd, "time", 0),
-      (t, ev) -> send(proto.csock, from.host, from.port, """{"event": "$ev", "time": $t $id}\n""")
-    )
+    conn.chost = from.host
+    conn.cport = from.port
+    och = get(conn.client, :ochannels)
+    x = reshape(copy(conn.obuf), och, :)'
+    transmit(conn.client, get(cmd, "time", 0), x, get(cmd, "id", nothing))
   elseif action == "ostop"
-    ostop(proto.client)
+    # do nothing, as simulator does not support stopping output half way through
   elseif action == "get"
     k = Symbol(cmd["param"])
-    v = k === :obufsize ? OBUFSIZE : get(proto.client, k)
-    v === nothing || send(proto.csock, from.host, from.port, """{"param": "$(cmd["param"])", "value": $v $id}\n""")
+    v = k === :obufsize ? OBUFSIZE : get(conn.client, k)
+    if v !== nothing
+      rsp = Dict{String,Any}()
+      rsp["param"] = cmd["param"]
+      rsp["value"] = v
+      "id" ∈ keys(cmd) && (rsp["id"] = cmd["id"])
+      @info JSON.json(rsp)
+      send(conn.csock, from.host, from.port, JSON.json(rsp) * "\n")
+    end
   elseif action == "set"
-    set!(proto.client, Symbol(cmd["param"]), cmd["value"])
+    set!(conn.client, Symbol(cmd["param"]), cmd["value"])
   elseif action == "quit"
     # don't quit
   end
 end
 
 # called when we receive data
-function _odata(proto::GroguDaemon, data)
+function _odata(conn::GroguDaemon, data)
   try
     # skip 16 byte header and convert the rest to floats
-    push!(proto.obuf, reinterpret(Float32, data[17:end]))
+    append!(conn.obuf, ntoh.(reinterpret(Float32, @view data[17:end])))
   catch ex
     @warn ex
   end
-end
-
-# called to send data
-function _idata(proto::GroguDaemon, host, port, t, seqno, data::Matrix{Float32})
-  hdr = GroguDataHeader(hton(UInt64(t)), hton(UInt32(seqno)), hton(UInt16(size(data,1))), hton(UInt16(size(data,2))))
-  bytes = vcat(reinterpret(UInt8, [hdr]), reinterpret(UInt8, data))
-  send(proto.dsock, host, port, bytes)
 end
