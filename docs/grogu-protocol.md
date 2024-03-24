@@ -140,3 +140,6 @@ Data is sent over the network in network byte order (big endian).
 ADC data is streamed to the client as it comes in, and all fields are populated.
 
 DAC data is sent by the client to grogud, and is appended to the DAC buffer provided it is valid and the buffer has sufficient space. The number of channels of data for DAC must match the published `ochannels` parameter. The `timestamp` field is ignored for DAC data.
+
+Multiple channels are interleaved, i.e., data is organized as:
+`[ch1_t1 ch2_t1 ch3_t1 ch4_t1 ch1_t2 ch2_t2 ch3_t2 ch4_t2 ...]`

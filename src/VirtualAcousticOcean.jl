@@ -7,5 +7,6 @@ const Time = UInt64
 ### code modules
 include("tape.jl")
 include("sim.jl")
+include("grogu.jl")
 
 end # module

@@ -13,13 +13,12 @@ mutable struct Node
   pos::Pos3D                    # nominal (x, y, z) position of node
   relpos::Vector{Pos3D}         # relative position of transducers/hydrophones wrt node
   ochannels::Int                # number of output channels
-  baseport::Int                 # base UDP port number
   igain::Float64                # dB re rxref
   ogain::Float64                # dB re txref
   mute::Bool                    # is node muted?
   seqno::UInt64                 # input (ADC) stream block sequence number
-  obuf::Matrix{Float32}         # output signal buffer (DAC)
   tapes::Vector{SignalTape}     # signal tape for each hydrophone
+  proto::Any                    # protocol implementation
   observer::Any                 # vector to store signal or streaming callback
 end
 
@@ -42,7 +41,6 @@ Base.@kwdef struct Simulation{T}
   irate::Float64 = 96000.0              # ADC samples/s
   iblksize::Int = 256                   # ADC samples
   orate::Float64 = 192000.0             # DAC samples/s
-  obufsize::Int = 1920000               # DAC samples
   txref::Float64 = 185.0                # dB re µPa @ 1m
   rxref::Float64 = -190.0               # dB re 1/µPa
   task::SimTask = SimTask(0.0, 0, nothing)
@@ -62,7 +60,6 @@ Optional parameters:
 - `irate`: ADC frame rate for sampling aoustic signal (samples/s)
 - `iblksize`: ADC block size for streaming acoustic signal (samples)
 - `orate`: DAC frame rate for transmitting acoustic signal (samples/s)
-- `obufsize`: DAC buffer size to store signal to transmit (samples)
 - `txref`: Conversion between DAC input and acoustic source level (dB re µPa @ 1m)
 - `rxref`: Conversion between acoustic receive level and ADC output (dB re 1/µPa)
 """
@@ -81,9 +78,8 @@ are assumed to be receive-only channels.
 """
 function addnode!(sim::Simulation, nodepos::Pos3D, baseport; relpos=[(0.0, 0.0, 0.0)], ochannels=1)
   sim.task.task === nothing || error("Cannot add node to running simulation")
-  obuf = Matrix{Float32}(undef, 0, ochannels)
   tapes = [SignalTape() for _ ∈ 1:length(relpos)]
-  node = Node(nodepos, relpos, ochannels, baseport, 0.0, 0.0, false, 0, obuf, tapes, nothing)
+  node = Node(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, baseport, nothing)
   push!(sim.nodes, node)
   length(sim.nodes)
 end
@@ -147,7 +143,10 @@ end
 Start listening for UDP commands/data for `node`.
 """
 function Base.run(sim::Simulation, node::Node)
-  # TODO
+  if node.proto isa Integer
+    # TODO: provide a way to set host or other protocols
+    node.proto = GroguDaemon((sim, node), node.proto)
+  end
 end
 
 """
@@ -156,7 +155,10 @@ end
 Stop listening for UDP commands/data for `node`.
 """
 function Base.close(sim::Simulation, node::Node)
-  # TODO
+  if !(node.proto isa Integer) && node.proto !== nothing
+    close(node.proto)
+    node.proto = nothing
+  end
 end
 
 """
@@ -242,4 +244,84 @@ function transmit(sim::Simulation, node::Node, t, x)
     end
   end
   nothing
+end
+
+################################################################################
+### Node protocol interface methods
+
+"""
+    istart(client, callback, blocks=0)
+
+Start ADC data stream. `callback(timestamp::UInt64, seqno::UInt32, data::Matrix{Float32})`
+is called for ADC data block, where `timestamp` is in microseconds. If the number
+of `blocks` is 0, streams forever, otherwise streams for `blocks`.
+"""
+function istart((sim, node)::Tuple{Simulation,Node}, callback, blocks=0)
+  # TODO
+end
+
+"""
+    istop(client)
+
+Stop ADC data stream.
+"""
+function istop((sim, node)::Tuple{Simulation,Node})
+  # TODO
+end
+
+"""
+    ostart(client, x::Matrix{Float32}, t=0)
+
+Start DAC output. If time `t` is in the past, output starts immediately.
+"""
+function ostart((sim, node)::Tuple{Simulation,Node}, x::Matrix{Float32}, t=0)
+  t = round(Int, t / 1000000 * sim.irate)
+  transmit(sim, node, t, x)
+end
+
+"""
+    ostop(client)
+
+Stop DAC output.
+"""
+function ostop((sim, node)::Tuple{Simulation,Node})
+  # do nothing, as simulator does not support stopping transmission
+end
+
+"""
+    Base.get(client, k::Symbol)
+
+Get parameter `k`. Returns `nothing` is parameter is unknown.
+"""
+function Base.get((sim, node)::Tuple{Simulation,Node}, k::Symbol)
+  k === :time && return round(Int, sim.task.t / sim.irate)
+  k === :iseqno && return node.seqno
+  k === :iblksize && return sim.iblksize
+  k === :irate && return sim.irate
+  k === :irates && return [sim.irate]
+  k === :ichannels && return length(node.relpos)
+  k === :igain && return node.igain
+  k === :orate && return sim.orate
+  k === :orates && return [sim.orate]
+  k === :ochannels && return node.ochannels
+  k === :ogain && return node.ogain
+  k === :omute && return node.omute
+  nothing
+end
+
+"""
+    set!(client, k::Symbol, v)
+
+Set parameter `k` to value `v`. Unknown parameters are silently ignored.
+"""
+function set!((sim, node)::Tuple{Simulation,Node}, k::Symbol, v)
+  if k === :igain
+    node.igain = v
+  elseif k === :ogain
+    node.ogain = v
+  elseif k === :omute
+    node.omute = v
+  elseif k === :iseqno
+    node.seqno = 0
+  end
 end
