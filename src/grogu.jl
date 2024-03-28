@@ -4,7 +4,7 @@ using JSON
 ################################################################################
 ### types and constants
 
-const OBUFSIZE = 1920000        # DAC samples
+const OBUFSIZE = 1920000          # DAC samples
 
 mutable struct GroguDaemon
   const client::Any               # opaque client handle
@@ -101,7 +101,7 @@ Stream data over connection. `t` is the time (in µs) of the first sample in the
 function stream(conn::GroguDaemon, t, seqno, data)
   if conn.dport > 0
     hdr = GroguDataHeader(hton(UInt64(t)), hton(UInt32(seqno)), hton(UInt16(size(data,1))), hton(UInt16(size(data,2))))
-    bytes = vcat(reinterpret(UInt8, [hdr]), reinterpret(UInt8, hton.(data)))
+    bytes = vcat(reinterpret(UInt8, [hdr]), reinterpret(UInt8, hton.(vec(data'))))
     send(conn.dsock, conn.dhost, conn.dport, bytes)
   end
 end
