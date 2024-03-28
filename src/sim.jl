@@ -198,7 +198,7 @@ channels.
 """
 function stream(sim::Simulation, node::Node, t, x)
    if node.conn !== nothing
-    stream(node.conn, t, node.seqno, x)
+    stream(node.conn, time_µs(sim, t), node.seqno, x)
     node.seqno += 1
    end
 end
@@ -240,16 +240,17 @@ end
 """
     transmit(client, t, x::Matrix{Float32}, id)
 
-Start DAC output. If time `t` is in the past, output starts immediately. `id`
+Start DAC output. If time `t` (in µs) is in the past, output starts immediately. `id`
 is an opaque identifier for the transmission to be passed back during transmission
 start/stop events.
 """
 function transmit((sim, node)::Tuple{Simulation,Node}, t, x, id)
-  ti = time_samples(sim, t)
-  ti = max(ti, sim.task.t)
-  transmit(sim, node, ti, x)
-  schedule(sim, ti, t -> node.conn === nothing || event(node.conn, t, "ostart", id))
-  schedule(sim, ti + size(x,1), t -> node.conn === nothing || event(node.conn, t, "ostop", id))
+  ti_start = time_samples(sim, t)
+  ti_start = max(ti_start, sim.task.t)
+  ti_end = ti_start + round(Int, size(x,1) / sim.orate * sim.irate)
+  transmit(sim, node, ti_start, x)
+  schedule(sim, ti_start, t -> node.conn === nothing || event(node.conn, time_µs(sim, t), "ostart", id))
+  schedule(sim, ti_end, t -> node.conn === nothing || event(node.conn, time_µs(sim, t), "ostop", id))
 end
 
 """

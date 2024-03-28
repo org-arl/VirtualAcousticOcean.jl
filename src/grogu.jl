@@ -95,7 +95,8 @@ end
 """
     stream(conn::GroguDaemon, t, seqno, data)
 
-Stream data over connection.
+Stream data over connection. `t` is the time (in µs) of the first sample in the
+`data` buffer, and `seqno` is the frame number in the data stream.
 """
 function stream(conn::GroguDaemon, t, seqno, data)
   if conn.dport > 0
@@ -108,15 +109,16 @@ end
 """
     event(conn::GroguDaemon, t, ev, id)
 
-Send event `ev` at time `t` with optional `id` over connection.
+Send event `ev` at time `t`  (in µs) with optional `id` over connection.
 """
 function event(conn::GroguDaemon, t, ev, id)
+  conn.chost === nothing && return
   ntf = Dict{String,Any}()
   ntf["event"] = ev
   ntf["time"] = t
   id === nothing || (ntf["id"] = id)
   @info JSON.json(ntf)
-  send(conn.csock, conn.chost, conn.cport, JSON.json(ntf) * "\n")
+  send(conn.csock, conn.chost, conn.cport, Vector{UInt8}(JSON.json(ntf) * "\n"))
 end
 
 # called when we receive a command
@@ -147,6 +149,7 @@ function _command(conn::GroguDaemon, from, cmd)
     conn.cport = from.port
     och = get(conn.client, :ochannels)
     x = reshape(copy(conn.obuf), och, :)'
+    empty!(conn.obuf)
     transmit(conn.client, get(cmd, "time", 0), x, get(cmd, "id", nothing))
   elseif action == "ostop"
     # do nothing, as simulator does not support stopping output half way through
