@@ -117,13 +117,13 @@ function event(conn::GroguDaemon, t, ev, id)
   ntf["event"] = ev
   ntf["time"] = t
   id === nothing || (ntf["id"] = id)
-  @info JSON.json(ntf)
+  @debug JSON.json(ntf)
   send(conn.csock, conn.chost, conn.cport, Vector{UInt8}(JSON.json(ntf) * "\n"))
 end
 
 # called when we receive a command
 function _command(conn::GroguDaemon, from, cmd)
-  @info cmd
+  @debug cmd
   action = cmd["action"]
   if action == "version"
     ver = pkgversion(@__MODULE__)
@@ -132,7 +132,7 @@ function _command(conn::GroguDaemon, from, cmd)
     rsp["version"] = "$ver"
     rsp["protocol"] = "0.1.0"
     "id" ∈ keys(cmd) && (rsp["id"] = cmd["id"])
-    @info JSON.json(rsp)
+    @debug JSON.json(rsp)
     send(conn.csock, from.host, from.port, JSON.json(rsp) * "\n")
   elseif action == "ireset"
     set!(conn.client, :iseqno, 0)
@@ -161,7 +161,7 @@ function _command(conn::GroguDaemon, from, cmd)
       rsp["param"] = cmd["param"]
       rsp["value"] = v
       "id" ∈ keys(cmd) && (rsp["id"] = cmd["id"])
-      @info JSON.json(rsp)
+      @debug JSON.json(rsp)
       send(conn.csock, from.host, from.port, JSON.json(rsp) * "\n")
     end
   elseif action == "set"
