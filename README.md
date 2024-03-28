@@ -3,9 +3,16 @@
 
 ### Introduction
 
-The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayModel`](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_pekeris.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations.
+The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayModel`](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_pekeris.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams are simulated analog-to-digital convertor (ADC) and digital-to-analog (DAC) convertor data in acoustic systems.
 
 If you only need offline acoustic simulations, you may want to consider using the [acoustic simulation API](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html#Acoustic-simulations) in `UnderwaterAcoustics.jl` directly instead.
+
+### Installation
+
+```julia
+julia> # press ]
+pkg> add VirtualAcousticOcean
+```
 
 ### Setting up a simulation
 
@@ -47,7 +54,7 @@ close(sim)
 
 ### Extending / Contributing
 
-While the Virtual Acoustic Ocean currently only supports the Grogu real-time streaming protocol, the code is designed to easily allow users to implement their own streaming protocols. If you implement a standard protocol that you feel may be useful to others, please do consider contributing the implementation back to this repository via a pull request.
+While the Virtual Acoustic Ocean currently only supports the Grogu real-time streaming protocol, the code is designed to easily allow users to implement their own streaming protocols. If you implement a standard protocol that you feel may be useful to others, please do consider contributing the implementation back to this repository via a pull request (PR).
 
 To implement a new protocol, create a new data type (e.g. `MyProtocol`) and support the following API:
 ```julia
@@ -67,7 +74,7 @@ VirtualAcousticOcean.transmit(client, timestamp::Int, data::Matrix{Float32}, id)
 ```
 
 Supported parameters:
-```
+```julia
 :time         # current simulated time in µs
 :iseqno       # next block sequence number of ADC input data stream
 :iblksize     # ADC input data stream block size in samples
@@ -81,3 +88,9 @@ Supported parameters:
 :ogain        # gain (dB) for DAC channels
 :omute        # mute flag indicating that the DAC is muted
 ```
+
+### Limitations
+
+Currently, the Virtual Acoustic Ocean makes a quasi-static assumption:
+- Node reception time is computed at time of transmission, and therefore does not account for any node motion while the transmission is in flight. This is a reasonable simplification for slow moving nodes and short distances, but may not hold at very long range communication.
+- Node motion does not induce any Doppler in the reception.
