@@ -9,4 +9,5 @@ Sockets = "6462fe0b-24de-5631-8697-dd941f90decc"
 UnderwaterAcoustics = "0efb1f7a-1ce7-46d2-9f48-546a4c8fbb99"
 
 [compat]
+julia = "1.6"
 UnderwaterAcoustics = "0.3"
