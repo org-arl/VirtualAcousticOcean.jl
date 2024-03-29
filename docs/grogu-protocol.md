@@ -1,12 +1,12 @@
-# Grogu UDP protocol
+# Grogu UDP real-time streaming protocol
 
 ## Overview
 
-The Grogu UDP protocol allows a Grogu baseband service to access ADC/DAC over a network using UDP packets. Both, the Grogu server (henceforth referred to as `grogud`) and a Grogu client listen on 2 UDP ports: the _command_ port and the _data_ port. All communications over the command ports use ASCII JSON messages. All communications over the data ports use a binary PDU format.
+The Grogu UDP real-time streaming protocol allows a Grogu baseband service to access ADC/DAC over a network using UDP packets. Both, the Grogu server (henceforth referred to as `grogud`, provided by Virtual Acoustic Ocean or a hardware driver on a modem) and a Grogu client (typically a baseband service in a modem) listen on 2 UDP ports: the _command_ port and the _data_ port. All communications over the command ports use ASCII JSON messages. All communications over the data ports use a binary PDU format.
 
 ## Command protocol
 
-Any command sent by a client to grogud command port (default port 9809) is called a _request_. The grogud may, if necessary, respond to a request with a _response_ to the UDP port from which the request came (client's command port). Sometimes grogud may send unsolicited _notifications_ on the same port.
+Any command sent by a client to `grogud` command port (default port `9809`) is called a _request_. The `grogud` may, if necessary, respond to a request with a _response_ to the UDP port from which the request came (client's command port). Sometimes `grogud` may send unsolicited _notifications_ on the same port.
 
 The JSON messages below show request/response interactions through examples:
 
@@ -18,6 +18,7 @@ with response:
 ```
 {"name": "grogud", "version": "0.1.0", "protocol": "0.1.0"}
 ```
+Here `grogud` may be replaced by an identifier for the driver providing the service.
 
 ### Reset ADC data counters and time:
 ```
@@ -58,7 +59,10 @@ with notifications at start and end of DAC output:
 ```
 If a `time` is specified, the DAC output is deferred until the specified time.
 If the `time` is in the past, the DAC output should start immediately. The value
-of `time` should be treated as an unsigned 64-bit integer.
+of `time` should be treated as an unsigned 64-bit integer, and represents time in
+µs from some arbitrary origin.
+
+A successful `ostart` transmits the signal in the data buffer and clears the buffer.
 
 ### Stop DAC output:
 ```
@@ -87,19 +91,19 @@ If the DAC output was enabled, this would result in a `ostop` notification:
 ```
 with corresponding responses:
 ```
-{"param": "time", "value": 347667475}     # timestamp in µs from some origin
-{"param": "iseqno", "value": 3451}        # next ADC block sequence number
-{"param": "iblksize", "value": 256}       # ADC block size in samples/channel
-{"param": "irate", "value": 48000}        # ADC sampling rate in Sa/s
+{"param": "time", "value": 347667475}         # timestamp in µs from some origin
+{"param": "iseqno", "value": 3451}            # next ADC block sequence number
+{"param": "iblksize", "value": 256}           # ADC block size in samples/channel
+{"param": "irate", "value": 48000}            # ADC sampling rate in Sa/s
 {"param": "irates", "value": [48000, 96000]}  # possible ADC sampling rates
-{"param": "ichannels", "value": 1}        # number of ADC channels
-{"param": "igain", "value": 0}            # ADC gain in dB
-{"param": "obufsize", "value": 2880000}   # DAC buffer size in samples/channel
-{"param": "orate", "value": 48000}        # DAC sampling rate in Sa/s
+{"param": "ichannels", "value": 1}            # number of ADC channels
+{"param": "igain", "value": 0}                # ADC gain in dB
+{"param": "obufsize", "value": 2880000}       # DAC buffer size in samples/channel
+{"param": "orate", "value": 48000}            # DAC sampling rate in Sa/s
 {"param": "orates", "value": [48000, 96000]}  # possible DAC sampling rates
-{"param": "ochannels", "value": 1}        # number of DAC channels
-{"param": "ogain", "value": 0}            # DAC gain in dB
-{"param": "omute", "value": false}        # DAC mute setting
+{"param": "ochannels", "value": 1}            # number of DAC channels
+{"param": "ogain", "value": 0}                # DAC gain in dB
+{"param": "omute", "value": false}            # DAC mute setting
 ```
 
 ### Set parameters:
@@ -118,11 +122,11 @@ with corresponding responses:
 
 If there is a need to associate a response with a request, an `id` field may be added to the request, and is copied in the response. For example:
 ```
-{"action": "get", "param": "irate", id: "123456abcdef"}
+{"action": "get", "param": "irate", id: 123}
 ```
 yields
 ```
-{"param": "irate", "value": 48000, id: "123456abcdef"}
+{"param": "irate", "value": 48000, id: 123}
 ```
 
 ## Data PDU format
@@ -141,5 +145,5 @@ ADC data is streamed to the client as it comes in, and all fields are populated.
 
 DAC data is sent by the client to grogud, and is appended to the DAC buffer provided it is valid and the buffer has sufficient space. The number of channels of data for DAC must match the published `ochannels` parameter. The `timestamp` field is ignored for DAC data.
 
-Multiple channels are interleaved, i.e., data is organized as:
+Multiple channels are interleaved, i.e., data is organized as:<br>
 `[ch1_t1 ch2_t1 ch3_t1 ch4_t1 ch1_t2 ch2_t2 ch3_t2 ch4_t2 ...]`
