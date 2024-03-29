@@ -33,11 +33,11 @@ We then define a simulation using that environment, adding acoustic nodes to it:
 using VirtualAcousticOcean
 
 sim = Simulation(pm, 25000.0)                       # operating at 25 kHz nominal frequency
-addnode!(sim, (0.0, 0.0, -10.0), GroguUDP, 9809)    # node 1 at 10 m depth, accessible over UDP port 9809
-addnode!(sim, (1000.0, 0.0, -10.0), GroguUDP, 9819) # node 2 at 10 m depth, 1 km away, accessible over UDP port 9819
+addnode!(sim, (0.0, 0.0, -10.0), GroguUDP, 9809)    # node 1 at 10 m depth
+addnode!(sim, (1000.0, 0.0, -10.0), GroguUDP, 9819) # node 2 at 10 m depth, 1 km away
 run(sim)                                            # start simulation (non-blocking)
 ```
-Any number of nodes may be added to a simulation. Each node is accessible over UDP port using the [Grogu UDP real-time streaming protocol](./docs/grogu-protocol.md). [UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators support the Grogu protocol out-of-the-box.
+Any number of nodes may be added to a simulation. Both nodes above will be accessible over UDP ports (`9809` and `9819` respectively) using the [Grogu UDP real-time streaming protocol](./docs/grogu-protocol.md). [UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators support the Grogu protocol out-of-the-box.
 
 Nodes may have an array of hydrophones, if desired. To define an array, each hydrophone location relative to the node location is specified using a keyword parameter `relpos`. For example:
 ```julia
@@ -66,7 +66,16 @@ Once the simulation is up and running, we can connect to the Virtual Acoustic Oc
 ADC data can be streamed from any of the nodes by sending a `istart` command and specifying the UDP port to stream the data to.
 
 > [!TIP]
-[UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators allow us to specify the UDP port to connect to in the `modem.toml` as `baseport` under the `[input]` section.
+[UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators allow us to specify the UDP port to connect to in the `modem.toml`. A minimal example `modem.toml` is shown below:
+
+```toml
+[input]
+analoginterface = "GroguDAQ"    # use GroguUDP protocol
+baseport = 9819                 # with control port 9819, DAQ data port 9820
+
+[bb]
+fc = 24000                      # carrier frequency of 24 kHz
+```
 
 ### Extending / Contributing
 
@@ -80,7 +89,9 @@ VirtualAcousticOcean.stream(conn::MyProtocol, timestamp::Int, seqno::Int, data::
 VirtualAcousticOcean.event(conn::MyProtcocol, timestamp::Int, event, id)
 Base.close(conn::MyProtocol)
 ```
-For documentation on what each API function should do, refer to the [Grogu UDP real-time streaming protocol implementation](./src/grogu.jl).
+`data` matrix contains samples scaled in the ±1 range, with each column containing data for one channel. `timestamp` are in µs from an arbitrary time origin. `seqno` is a running packet number for streaming data. `id` is an opaque numeric ID identifying the tranmission for which an event (transmission start `ostart` and transmission end `ostop`) is sent.
+
+For detailed documentation on what each API function should do, refer to the Grogu UDP protocol [implementation](./src/grogu.jl).
 
 The protocol implementation may call the following API:
 ```julia
