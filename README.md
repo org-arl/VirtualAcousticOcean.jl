@@ -3,8 +3,9 @@
 
 ### Introduction
 
-The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayModel`](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_pekeris.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams are simulated analog-to-digital convertor (ADC) and digital-to-analog (DAC) convertor data in acoustic systems.
+The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayModel`](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_pekeris.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams simulate analog-to-digital convertors (ADC) and digital-to-analog convertors (DAC) in acoustic systems.
 
+> [!TIP]
 If you only need offline acoustic simulations, you may want to consider using the [acoustic simulation API](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html#Acoustic-simulations) in `UnderwaterAcoustics.jl` directly instead.
 
 ### Installation
@@ -31,16 +32,16 @@ We then define a simulation using that environment, adding acoustic nodes to it:
 ```julia
 using VirtualAcousticOcean
 
-sim = Simulation(pm, 25000.0)               # operating at 25 kHz nominal frequency
-addnode!(sim, (0.0, 0.0, -10.0), 9809)      # node 1 at 10 m depth, accessible over UDP port 9809
-addnode!(sim, (1000.0, 0.0, -10.0), 9819)   # node 2 at 10 m depth, 1 km away, accessible over UDP port 9819
-run(sim)                                    # start simulation (non-blocking)
+sim = Simulation(pm, 25000.0)                       # operating at 25 kHz nominal frequency
+addnode!(sim, (0.0, 0.0, -10.0), GroguUDP, 9809)    # node 1 at 10 m depth, accessible over UDP port 9809
+addnode!(sim, (1000.0, 0.0, -10.0), GroguUDP, 9819) # node 2 at 10 m depth, 1 km away, accessible over UDP port 9819
+run(sim)                                            # start simulation (non-blocking)
 ```
-Any number of nodes may be added to a simulation. Each node is accessible over UDP port using the [Grogu real-time streaming protocol](./docs/grogu-protocol.md). UnetStack 4 based models and software-defined model simulators support the Grogu protocol out-of-the-box.
+Any number of nodes may be added to a simulation. Each node is accessible over UDP port using the [Grogu UDP real-time streaming protocol](./docs/grogu-protocol.md). [UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators support the Grogu protocol out-of-the-box.
 
 Nodes may have an array of hydrophones, if desired. To define an array, each hydrophone location relative to the node location is specified using a keyword parameter `relpos`. For example:
 ```julia
-addnode!(sim, (500.0, 500.0, -15.0), 9809; relpos=[
+addnode!(sim, (500.0, 500.0, -15.0), GroguUDP, 9829; relpos=[
   (0.0,0.0,0.0),      # relative position of hydrophone 1
   (0.0,0.0,-1.0),     # relative position of hydrophone 2
   (0.0,0.0,-2.0),     # relative position of hydrophone 3
@@ -52,9 +53,24 @@ To terminate the simulation, simply close the simulation:
 close(sim)
 ```
 
+### Connecting to the simulator
+
+Once the simulation is up and running, we can connect to the Virtual Acoustic Ocean and stream acoustic data from various nodes. For example, in the above simulation (with the Grogu UDP protocol), we will have the following UDP ports open once the simulator is running:
+- `9809` – command port for node 1 (single channel data)
+- `9810` – DAC data port for node 1 (single output channel)
+- `9819` – command port for node 2 (single channel data)
+- `9820` – DAC data port for node 2 (single output channel)
+- `9829` – command port for node 3 (4-channel data stream)
+- `9830` – DAC data port for node 3 (single output channel)
+
+ADC data can be streamed from any of the nodes by sending a `istart` command and specifying the UDP port to stream the data to.
+
+> [!TIP]
+[UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators allow us to specify the UDP port to connect to in the `modem.toml` as `baseport` under the `[input]` section.
+
 ### Extending / Contributing
 
-While the Virtual Acoustic Ocean currently only supports the Grogu real-time streaming protocol, the code is designed to easily allow users to implement their own streaming protocols. If you implement a standard protocol that you feel may be useful to others, please do consider contributing the implementation back to this repository via a pull request (PR).
+While the Virtual Acoustic Ocean currently only supports the [Grogu UDP real-time streaming protocol](./docs/grogu-protocol.md), the code is designed to easily allow users to implement their own streaming protocols. If you implement a standard protocol that you feel may be useful to others, please do consider contributing the implementation back to this repository via a pull request (PR).
 
 To implement a new protocol, create a new data type (e.g. `MyProtocol`) and support the following API:
 ```julia
@@ -64,7 +80,7 @@ VirtualAcousticOcean.stream(conn::MyProtocol, timestamp::Int, seqno::Int, data::
 VirtualAcousticOcean.event(conn::MyProtcocol, timestamp::Int, event, id)
 Base.close(conn::MyProtocol)
 ```
-For documentation on what each API function should do, refer to the [Grogu real-time streaming protocol implementation](./src/grogu.jl).
+For documentation on what each API function should do, refer to the [Grogu UDP real-time streaming protocol implementation](./src/grogu.jl).
 
 The protocol implementation may call the following API:
 ```julia

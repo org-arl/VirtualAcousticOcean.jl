@@ -1,12 +1,17 @@
 using Sockets
 using JSON
 
+export GroguUDP
+
 ################################################################################
 ### types and constants
 
 const OBUFSIZE = 1920000          # DAC samples
 
-mutable struct GroguDaemon
+"""
+Grogu UDP real-time streaming protocol.
+"""
+mutable struct GroguUDP
   const client::Any               # opaque client handle
   const csock::UDPSocket          # UDP command socket
   const dsock::UDPSocket          # UDP data socket
@@ -27,26 +32,26 @@ struct GroguDataHeader
 end
 
 ################################################################################
-### GroguDaemon methods
+### GroguUDP methods
 
 """
-    GroguDaemon(client, baseport)
-    GroguDaemon(client, baseport, ipaddr)
+    GroguUDP(client, baseport)
+    GroguUDP(client, baseport, ipaddr)
 
 Create Grogu daemon to run on UDP ports `baseport` and `baseport+1`. If IP address is
 not specified, daemon only binds to localhost. The `client` must support the
 protocol interface methods (see `Node` for details).
 """
-function GroguDaemon(client, baseport::Int, ipaddr::IPAddr=Sockets.localhost)
-  GroguDaemon(client, UDPSocket(), UDPSocket(), baseport, ipaddr, Float32[], nothing, 0, nothing, 0)
+function GroguUDP(client, baseport::Int, ipaddr::IPAddr=Sockets.localhost)
+  GroguUDP(client, UDPSocket(), UDPSocket(), baseport, ipaddr, Float32[], nothing, 0, nothing, 0)
 end
 
 """
-    run(conn::GroguDaemon)
+    run(conn::GroguUDP)
 
 Start Grogu daemon.
 """
-function Base.run(conn::GroguDaemon)
+function Base.run(conn::GroguUDP)
   bind(conn.csock, conn.ipaddr, conn.baseport) || error("Unable to bind to $(conn.ipaddr):$(conn.baseport)")
   bind(conn.dsock, conn.ipaddr, conn.baseport+1) || error("Unable to bind to $(conn.ipaddr):$(conn.baseport+1)")
   @async begin
@@ -82,23 +87,23 @@ function Base.run(conn::GroguDaemon)
 end
 
 """
-    close(conn::GroguDaemon)
+    close(conn::GroguUDP)
 
 Close grogu daemon.
 """
-function Base.close(conn::GroguDaemon)
+function Base.close(conn::GroguUDP)
   close(conn.csock)
   close(conn.dsock)
   nothing
 end
 
 """
-    stream(conn::GroguDaemon, t, seqno, data)
+    stream(conn::GroguUDP, t, seqno, data)
 
 Stream data over connection. `t` is the time (in µs) of the first sample in the
 `data` buffer, and `seqno` is the frame number in the data stream.
 """
-function stream(conn::GroguDaemon, t, seqno, data)
+function stream(conn::GroguUDP, t, seqno, data)
   if conn.dport > 0
     hdr = GroguDataHeader(hton(UInt64(t)), hton(UInt32(seqno)), hton(UInt16(size(data,1))), hton(UInt16(size(data,2))))
     bytes = vcat(reinterpret(UInt8, [hdr]), reinterpret(UInt8, hton.(vec(data'))))
@@ -107,11 +112,11 @@ function stream(conn::GroguDaemon, t, seqno, data)
 end
 
 """
-    event(conn::GroguDaemon, t, ev, id)
+    event(conn::GroguUDP, t, ev, id)
 
 Send event `ev` at time `t`  (in µs) with optional `id` over connection.
 """
-function event(conn::GroguDaemon, t, ev, id)
+function event(conn::GroguUDP, t, ev, id)
   conn.chost === nothing && return
   ntf = Dict{String,Any}()
   ntf["event"] = ev
@@ -122,7 +127,7 @@ function event(conn::GroguDaemon, t, ev, id)
 end
 
 # called when we receive a command
-function _command(conn::GroguDaemon, from, cmd)
+function _command(conn::GroguUDP, from, cmd)
   @debug cmd
   action = cmd["action"]
   if action == "version"
@@ -172,7 +177,7 @@ function _command(conn::GroguDaemon, from, cmd)
 end
 
 # called when we receive data
-function _odata(conn::GroguDaemon, data)
+function _odata(conn::GroguUDP, data)
   try
     # skip 16 byte header and convert the rest to floats
     append!(conn.obuf, ntoh.(reinterpret(Float32, @view data[17:end])))

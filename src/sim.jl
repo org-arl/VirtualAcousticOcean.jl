@@ -66,21 +66,21 @@ Optional parameters:
 Simulation(model, frequency; kwargs...) = Simulation(; model, frequency, kwargs...)
 
 """
-    addnode!(sim::Simulation, nodepos::Pos3D, baseport; relpos=[(0,0,0)], ochannels=1)
+    addnode!(sim::Simulation, nodepos::Pos3D, protocol, args...; relpos=[(0,0,0)], ochannels=1)
 
-Add simulated node at location `nodepos`, accessible at UDP ports `baseport`
-(command port) and `baseport+1` (data port). If the node supports multiple
-transducers/hydrophones, their relative positions (wrt `nodepos`) should be
-provided as a vector of positions in `relpos`. `ochannels` is the number of
-transmitters supported by the node. Channels `1:ochannels` are assumed to be
-able to transmit and receive, whereas channels `ochannels+1:length(relpos)`
-are assumed to be receive-only channels.
+Add simulated node at location `nodepos`, accessible over the specified `protocol`.
+`args` are protocol arguments, passed to the constructor of the protocol.
+If the node supports multiple transducers/hydrophones, their relative positions
+(wrt `nodepos`) should be provided as a vector of positions in `relpos`.
+`ochannels` is the number of transmitters supported by the node. Channels
+`1:ochannels` are assumed to be able to transmit and receive, whereas channels
+`ochannels+1:length(relpos)` are assumed to be receive-only channels.
 """
-function addnode!(sim::Simulation, nodepos::Pos3D, baseport; relpos=[(0.0, 0.0, 0.0)], ochannels=1)
+function addnode!(sim::Simulation, nodepos::Pos3D, protocol, args...; relpos=[(0.0, 0.0, 0.0)], ochannels=1)
   sim.task.task === nothing || error("Cannot add node to running simulation")
   tapes = [SignalTape() for _ ∈ 1:length(relpos)]
-  node = Node{GroguDaemon}(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, nothing)
-  node.conn = GroguDaemon((sim, node), baseport)
+  node = Node{protocol}(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, nothing)
+  node.conn = protocol((sim, node), args...)
   push!(sim.nodes, node)
   length(sim.nodes)
 end
