@@ -37,7 +37,7 @@ addnode!(sim, (0.0, 0.0, -10.0), GroguUDP, 9809)    # node 1 at 10 m depth
 addnode!(sim, (1000.0, 0.0, -10.0), GroguUDP, 9819) # node 2 at 10 m depth, 1 km away
 run(sim)                                            # start simulation (non-blocking)
 ```
-Any number of nodes may be added to a simulation. Both nodes above will be accessible over UDP ports (`9809` and `9819` respectively) using the [Grogu UDP real-time streaming protocol](./docs/grogu-protocol.md). [UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators support the Grogu protocol out-of-the-box.
+Any number of nodes may be added to a simulation. Both nodes above will be accessible over UDP ports (`9809` and `9819` respectively) using the [Grogu UDP real-time streaming protocol](./docs/grogu-protocol.md). [UnetStack](http://www.unetstack.net) 4 based modems and software-defined model simulators support the Grogu protocol out-of-the-box.
 
 Nodes may have an array of hydrophones, if desired. To define an array, each hydrophone location relative to the node location is specified using a keyword parameter `relpos`. For example:
 ```julia
