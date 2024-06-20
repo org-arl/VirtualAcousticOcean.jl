@@ -221,10 +221,10 @@ function transmit(sim::Simulation, node::Node, t, x)
   rxnodes = filter(n -> n != node, sim.nodes)
   rx = mapreduce(n -> [AcousticReceiver((n.pos .+ p)...) for p ∈ n.relpos], vcat, rxnodes)
   arr = [arrivals(sim.model, tx1, rx1) for tx1 ∈ tx, rx1 ∈ rx]
-  sf = 10 ^ (sim.txref / 20)
+  sf = 10 ^ ((sim.txref + sim.ogain) / 20)
   y = UnderwaterAcoustics.Recorder(nothing, tx, rx, arr)(sf * x; fs, reltime=false)
   j = 1
-  sf = 10 ^ (sim.rxref / 20)
+  sf = 10 ^ ((sim.rxref + sim.igain) / 20)
   for node ∈ rxnodes
     for tape ∈ node.tapes
       push!(tape, t, sf * y[:,j])
