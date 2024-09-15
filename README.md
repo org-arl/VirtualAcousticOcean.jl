@@ -32,7 +32,7 @@ We then define a simulation using that environment, adding acoustic nodes to it:
 ```julia
 using VirtualAcousticOcean
 
-sim = Simulation(pm, 25000.0)                       # operating at 25 kHz nominal frequency
+sim = Simulation(pm, 24000.0)                       # operating at 24 kHz nominal frequency
 addnode!(sim, (0.0, 0.0, -10.0), UASP, 9809)        # node 1 at 10 m depth
 addnode!(sim, (1000.0, 0.0, -10.0), UASP, 9819)     # node 2 at 10 m depth, 1 km away
 run(sim)                                            # start simulation (non-blocking)
@@ -74,7 +74,7 @@ analoginterface = "SoundcardDAQ"    # use UASP protocol
 baseport = 9819                     # with control port 9819, DAQ data port 9820
 
 [bb]
-fc = 25000                          # carrier frequency of 25 kHz
+fc = 24000                          # carrier frequency of 24 kHz
 ```
 
 ### Extending / Contributing
