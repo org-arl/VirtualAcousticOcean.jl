@@ -1,12 +1,12 @@
-# Grogu UDP real-time streaming protocol
+# UnetStack acoustic streaming protocol
 
 ## Overview
 
-The Grogu UDP real-time streaming protocol allows a Grogu baseband service to access ADC/DAC over a network using UDP packets. Both, the Grogu server (henceforth referred to as `grogud`, provided by Virtual Acoustic Ocean or a hardware driver on a modem) and a Grogu client (typically a baseband service in a modem) listen on 2 UDP ports: the _command_ port and the _data_ port. All communications over the command ports use ASCII JSON messages. All communications over the data ports use a binary PDU format.
+The UnetStack acoustic streaming protocol (UASP) allows a UnetStack baseband service to access ADC/DAC over a network using UDP packets. Both, the UASP server (henceforth referred to as `uaspd`, provided by Virtual Acoustic Ocean or a hardware driver on a modem) and a UASP client (typically a baseband service in a modem) listen on 2 UDP ports: the _command_ port and the _data_ port. All communications over the command ports use ASCII JSON messages. All communications over the data ports use a binary PDU format.
 
 ## Command protocol
 
-Any command sent by a client to `grogud` command port (default port `9809`) is called a _request_. The `grogud` may, if necessary, respond to a request with a _response_ to the UDP port from which the request came (client's command port). Sometimes `grogud` may send unsolicited _notifications_ on the same port.
+Any command sent by a client to `uaspd` command port (default port `9809`) is called a _request_. The `uaspd` may, if necessary, respond to a request with a _response_ to the UDP port from which the request came (client's command port). Sometimes `uaspd` may send unsolicited _notifications_ on the same port.
 
 The JSON messages below show request/response interactions through examples:
 
@@ -16,9 +16,9 @@ The JSON messages below show request/response interactions through examples:
 ```
 with response:
 ```
-{"name": "grogud", "version": "0.1.0", "protocol": "0.1.0"}
+{"name": "uaspd", "version": "0.1.0", "protocol": "0.1.0"}
 ```
-Here `grogud` may be replaced by an identifier for the driver providing the service.
+Here `uaspd` may be replaced by an identifier for the driver providing the service.
 
 ### Reset ADC data counters and time:
 ```
@@ -115,7 +115,7 @@ with corresponding responses:
 {"action": "set", "param": "omute", "value": false}
 ```
 
-### Quit grogud:
+### Quit uaspd:
 ```
 {"action": "quit"}
 ```
@@ -143,7 +143,7 @@ Data is sent over the network in network byte order (big endian).
 
 ADC data is streamed to the client as it comes in, and all fields are populated.
 
-DAC data is sent by the client to grogud, and is appended to the DAC buffer provided it is valid and the buffer has sufficient space. The number of channels of data for DAC must match the published `ochannels` parameter. The `timestamp` field is ignored for DAC data.
+DAC data is sent by the client to `uaspd`, and is appended to the DAC buffer provided it is valid and the buffer has sufficient space. The number of channels of data for DAC must match the published `ochannels` parameter. The `timestamp` field is ignored for DAC data.
 
 Multiple channels are interleaved, i.e., data is organized as:<br>
 `[ch1_t1 ch2_t1 ch3_t1 ch4_t1 ch1_t2 ch2_t2 ch3_t2 ch4_t2 ...]`

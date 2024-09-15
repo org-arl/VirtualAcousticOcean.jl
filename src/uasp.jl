@@ -1,7 +1,7 @@
 using Sockets
 using JSON
 
-export GroguUDP
+export UASP
 
 ################################################################################
 ### types and constants
@@ -9,9 +9,9 @@ export GroguUDP
 const OBUFSIZE = 1920000          # DAC samples
 
 """
-Grogu UDP real-time streaming protocol.
+UnetStack acoustic streaming protocol.
 """
-mutable struct GroguUDP
+mutable struct UASP
   const client::Any               # opaque client handle
   const csock::UDPSocket          # UDP command socket
   const dsock::UDPSocket          # UDP data socket
@@ -24,7 +24,7 @@ mutable struct GroguUDP
   dport::Int                      # port number to stream data to
 end
 
-struct GroguDataHeader
+struct UASP_DataHeader
   timestamp::UInt64
   seqno::UInt32
   nsamples::UInt16
@@ -32,26 +32,26 @@ struct GroguDataHeader
 end
 
 ################################################################################
-### GroguUDP methods
+### UASP methods
 
 """
-    GroguUDP(client, baseport)
-    GroguUDP(client, baseport, ipaddr)
+    UASP(client, baseport)
+    UASP(client, baseport, ipaddr)
 
-Create Grogu daemon to run on UDP ports `baseport` and `baseport+1`. If IP address is
+Create UASP daemon to run on UDP ports `baseport` and `baseport+1`. If IP address is
 not specified, daemon only binds to localhost. The `client` must support the
 protocol interface methods (see `Node` for details).
 """
-function GroguUDP(client, baseport::Int, ipaddr::IPAddr=Sockets.localhost)
-  GroguUDP(client, UDPSocket(), UDPSocket(), baseport, ipaddr, Float32[], nothing, 0, nothing, 0)
+function UASP(client, baseport::Int, ipaddr::IPAddr=Sockets.localhost)
+  UASP(client, UDPSocket(), UDPSocket(), baseport, ipaddr, Float32[], nothing, 0, nothing, 0)
 end
 
 """
-    run(conn::GroguUDP)
+    run(conn::UASP)
 
-Start Grogu daemon.
+Start UASP daemon.
 """
-function Base.run(conn::GroguUDP)
+function Base.run(conn::UASP)
   bind(conn.csock, conn.ipaddr, conn.baseport) || error("Unable to bind to $(conn.ipaddr):$(conn.baseport)")
   bind(conn.dsock, conn.ipaddr, conn.baseport+1) || error("Unable to bind to $(conn.ipaddr):$(conn.baseport+1)")
   @async begin
@@ -87,36 +87,36 @@ function Base.run(conn::GroguUDP)
 end
 
 """
-    close(conn::GroguUDP)
+    close(conn::UASP)
 
-Close grogu daemon.
+Close UASP daemon.
 """
-function Base.close(conn::GroguUDP)
+function Base.close(conn::UASP)
   close(conn.csock)
   close(conn.dsock)
   nothing
 end
 
 """
-    stream(conn::GroguUDP, t, seqno, data)
+    stream(conn::UASP, t, seqno, data)
 
 Stream data over connection. `t` is the time (in µs) of the first sample in the
 `data` buffer, and `seqno` is the frame number in the data stream.
 """
-function stream(conn::GroguUDP, t, seqno, data)
+function stream(conn::UASP, t, seqno, data)
   if conn.dport > 0
-    hdr = GroguDataHeader(hton(UInt64(t)), hton(UInt32(seqno)), hton(UInt16(size(data,1))), hton(UInt16(size(data,2))))
+    hdr = UASP_DataHeader(hton(UInt64(t)), hton(UInt32(seqno)), hton(UInt16(size(data,1))), hton(UInt16(size(data,2))))
     bytes = vcat(reinterpret(UInt8, [hdr]), reinterpret(UInt8, hton.(vec(data'))))
     send(conn.dsock, conn.dhost, conn.dport, bytes)
   end
 end
 
 """
-    event(conn::GroguUDP, t, ev, id)
+    event(conn::UASP, t, ev, id)
 
 Send event `ev` at time `t`  (in µs) with optional `id` over connection.
 """
-function event(conn::GroguUDP, t, ev, id)
+function event(conn::UASP, t, ev, id)
   conn.chost === nothing && return
   ntf = Dict{String,Any}()
   ntf["event"] = ev
@@ -127,7 +127,7 @@ function event(conn::GroguUDP, t, ev, id)
 end
 
 # called when we receive a command
-function _command(conn::GroguUDP, from, cmd)
+function _command(conn::UASP, from, cmd)
   @debug cmd
   action = cmd["action"]
   if action == "version"
@@ -177,7 +177,7 @@ function _command(conn::GroguUDP, from, cmd)
 end
 
 # called when we receive data
-function _odata(conn::GroguUDP, data)
+function _odata(conn::UASP, data)
   try
     # skip 16 byte header and convert the rest to floats
     append!(conn.obuf, ntoh.(reinterpret(Float32, @view data[17:end])))
