@@ -147,3 +147,5 @@ DAC data is sent by the client to `uaspd`, and is appended to the DAC buffer pro
 
 Multiple channels are interleaved, i.e., data is organized as:<br>
 `[ch1_t1 ch2_t1 ch3_t1 ch4_t1 ch1_t2 ch2_t2 ch3_t2 ch4_t2 ...]`
+
+Note: Since data PDUs are sent as UDP packets, it is recommended that `nsamples` is chosen such that the packet size does not exceed the supported UDP MTU (typically 1432 bytes). Modern systems support UDP packets larger than this, but they are often fragmented at the physical layer and may have poor performance, and so not recommended.

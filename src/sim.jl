@@ -38,7 +38,7 @@ Base.@kwdef struct Simulation{T}
   nodes::Vector{Node} = Node[]
   frequency::Float64                    # nominal frequency (Hz)
   irate::Float64 = 96000.0              # ADC samples/s
-  iblksize::Int = 256                   # ADC samples
+  iblksize::Int = 0                     # ADC samples
   orate::Float64 = 192000.0             # DAC samples/s
   txref::Float64 = 185.0                # dB re µPa @ 1m
   rxref::Float64 = -190.0               # dB re 1/µPa
@@ -58,7 +58,7 @@ with `UnderwaterAcoustics.jl`.
 
 Optional parameters:
 - `irate`: ADC frame rate for sampling aoustic signal (samples/s)
-- `iblksize`: ADC block size for streaming acoustic signal (samples)
+- `iblksize`: ADC block size for streaming acoustic signal (samples, 0 for auto)
 - `orate`: DAC frame rate for transmitting acoustic signal (samples/s)
 - `txref`: Conversion between DAC input and acoustic source level (dB re µPa @ 1m)
 - `rxref`: Conversion between acoustic receive level and ADC output (dB re 1/µPa)
@@ -104,23 +104,31 @@ end
 
 function _run(sim::Simulation, task::SimTask)
   sf = 10 ^ (sim.rxref / 20)
+  iblksize = _iblksize(sim)
   while task.t0 > 0
     Δt = task.t0 + (task.t / sim.irate) - time()
     Δt > 0 && sleep(Δt)
     for node ∈ sim.nodes
-      x = Matrix{Float32}(undef, sim.iblksize, length(node.tapes))
+      x = Matrix{Float32}(undef, iblksize, length(node.tapes))
       for i ∈ eachindex(node.tapes)
-        x[:,i] .= read(node.tapes[i], task.t, sim.iblksize)
-        x[:,i] .+= sf * real(record(noise(environment(sim.model)), sim.iblksize/sim.irate, sim.irate))
+        x[:,i] .= read(node.tapes[i], task.t, iblksize)
+        x[:,i] .+= sf * real(record(noise(environment(sim.model)), iblksize/sim.irate, sim.irate))
       end
       stream(sim, node, task.t, x)
     end
-    task.t += sim.iblksize
+    task.t += iblksize
     while !isempty(sim.timers) && sim.timers[1][1] ≤ task.t
       _, callback = popfirst!(sim.timers)
       @invokelatest callback(task.t)
     end
   end
+end
+
+# choose a block size that allows a data block to fit within an MTU of 1430 bytes or so
+function _iblksize(sim::Simulation)
+  sim.iblksize > 0 && return sim.iblksize
+  maxch = maximum(node -> length(node.tapes), sim.nodes)
+  min(353 ÷ maxch, 256)
 end
 
 """
@@ -261,7 +269,7 @@ Get parameter `k`. Returns `nothing` is parameter is unknown.
 function Base.get((sim, node)::Tuple{Simulation,Node}, k::Symbol)
   k === :time && return round(Int, sim.task.t / sim.irate)
   k === :iseqno && return node.seqno
-  k === :iblksize && return sim.iblksize
+  k === :iblksize && return _iblksize(sim)
   k === :irate && return sim.irate
   k === :irates && return [sim.irate]
   k === :ichannels && return length(node.relpos)
