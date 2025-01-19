@@ -8,5 +8,6 @@ const Time = UInt64
 include("tape.jl")
 include("sim.jl")
 include("uasp.jl")
+include("uasp2.jl")
 
 end # module
