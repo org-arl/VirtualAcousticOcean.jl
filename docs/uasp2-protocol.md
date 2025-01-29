@@ -1,16 +1,12 @@
-# UnetStack acoustic streaming protocol
-
-> [!TIP]
-Previously we recommended the use of UASP protocol (described below) that used UDP to stream acoustic data. We now recommend using [UASP2](uasp2-protocol.md), which uses a combination of TCP and UDP for improved robustness.
-
+# UnetStack acoustic streaming protocol v2
 
 ## Overview
 
-The UnetStack acoustic streaming protocol (UASP) allows a UnetStack baseband service to access ADC/DAC over a network using UDP packets. Both, the UASP server (henceforth referred to as `uaspd`, provided by Virtual Acoustic Ocean or a hardware driver on a modem) and a UASP client (typically a baseband service in a modem) listen on 2 UDP ports: the _command_ port and the _data_ port. All communications over the command ports use ASCII JSON messages. All communications over the data ports use a binary PDU format.
+The UnetStack acoustic streaming protocol v2 (UASP2) allows a UnetStack baseband service to access ADC/DAC over a network using IP. The UASP2 server (henceforth referred to as `uaspd`, provided by Virtual Acoustic Ocean or a hardware driver on a modem) listens on a TCP _command_ port. The UASP2 client (typically a baseband service in a modem) connects to the server over the TCP port and listens on a UDP _data_ port for an incoming data stream. All communications over the command ports use ASCII JSON messages. All communications over the data port use a binary PDU format.
 
 ## Command protocol
 
-Any command sent by a client to `uaspd` command port (default port `9809`) is called a _request_. The `uaspd` may, if necessary, respond to a request with a _response_ to the UDP port from which the request came (client's command port). Sometimes `uaspd` may send unsolicited _notifications_ on the same port.
+Any command sent by a client to `uaspd` command port (default TCP port `9809`) is called a _request_. The `uaspd` may, if necessary, respond to a request with a _response_. Sometimes `uaspd` may send unsolicited _notifications_.
 
 The JSON messages below show request/response interactions through examples:
 
@@ -20,7 +16,7 @@ The JSON messages below show request/response interactions through examples:
 ```
 with response:
 ```
-{"name": "uaspd", "version": "0.1.0", "protocol": "0.1.0"}
+{"name": "uaspd", "version": "0.2.0", "protocol": "0.2.0"}
 ```
 Here `uaspd` may be replaced by an identifier for the driver providing the service.
 
@@ -50,6 +46,12 @@ Here `uaspd` may be replaced by an identifier for the driver providing the servi
 ```
 {"action": "oclear"}
 ```
+
+### Append DAC data to buffer:
+```
+{"action": "odata", "data": "..."}
+```
+where `...` is the base-64 encoded output data in the data PDU format described later in this document.
 
 ### Start DAC output from data buffer:
 ```
@@ -152,4 +154,4 @@ DAC data is sent by the client to `uaspd`, and is appended to the DAC buffer pro
 Multiple channels are interleaved, i.e., data is organized as:<br>
 `[ch1_t1 ch2_t1 ch3_t1 ch4_t1 ch1_t2 ch2_t2 ch3_t2 ch4_t2 ...]`
 
-Note: Since data PDUs are sent as UDP packets, it is recommended that `nsamples` is chosen such that the packet size does not exceed the supported UDP MTU (typically 1432 bytes). Modern systems support UDP packets larger than this, but they are often fragmented at the physical layer and may have poor performance, and so not recommended.
+Note: When data PDUs are sent as UDP packets (for ADC streaming), it is recommended that `nsamples` is chosen such that the packet size does not exceed the supported UDP MTU (typically 1432 bytes). Modern systems support UDP packets larger than this, but they are often fragmented at the physical layer and may have poor performance, and so not recommended.

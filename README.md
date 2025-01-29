@@ -33,15 +33,18 @@ We then define a simulation using that environment, adding acoustic nodes to it:
 using VirtualAcousticOcean
 
 sim = Simulation(pm, 24000.0)                       # operating at 24 kHz nominal frequency
-addnode!(sim, (0.0, 0.0, -10.0), UASP, 9809)        # node 1 at 10 m depth
-addnode!(sim, (1000.0, 0.0, -10.0), UASP, 9819)     # node 2 at 10 m depth, 1 km away
+addnode!(sim, (0.0, 0.0, -10.0), UASP2, 9809)       # node 1 at 10 m depth
+addnode!(sim, (1000.0, 0.0, -10.0), UASP2, 9819)    # node 2 at 10 m depth, 1 km away
 run(sim)                                            # start simulation (non-blocking)
 ```
-Any number of nodes may be added to a simulation. Both nodes above will be accessible over UDP ports (`9809` and `9819` respectively) using the [UnetStack acoustic streaming protocol](./docs/uasp-protocol.md) (UASP). [UnetStack](http://www.unetstack.net) 5 based modems and software-defined modem simulators support the UASP protocol out-of-the-box.
+Any number of nodes may be added to a simulation. Both nodes above will be accessible over TCP ports (`9809` and `9819` respectively) using the [UnetStack acoustic streaming protocol v2](./docs/uasp2-protocol.md) (UASP2). [UnetStack](http://www.unetstack.net) 5 based modems and software-defined modem simulators support the UASP2 protocol out-of-the-box.
+
+> [!TIP]
+Previously we recommended the use of UASP protocol that used UDP to stream acoustic data. We now recommend using UASP2, which uses a combination of TCP and UDP for improved robustness.
 
 Nodes may have an array of hydrophones, if desired. To define an array, each hydrophone location relative to the node location is specified using a keyword parameter `relpos`. For example:
 ```julia
-addnode!(sim, (500.0, 500.0, -15.0), UASP, 9829; relpos=[
+addnode!(sim, (500.0, 500.0, -15.0), UASP2, 9829; relpos=[
   (0.0,0.0,0.0),      # relative position of hydrophone 1
   (0.0,0.0,-1.0),     # relative position of hydrophone 2
   (0.0,0.0,-2.0),     # relative position of hydrophone 3
@@ -55,23 +58,20 @@ close(sim)
 
 ### Connecting to the simulator
 
-Once the simulation is up and running, we can connect to the Virtual Acoustic Ocean and stream acoustic data from various nodes. For example, in the above simulation (with UASP), we will have the following UDP ports open once the simulator is running:
+Once the simulation is up and running, we can connect to the Virtual Acoustic Ocean and stream acoustic data from various nodes. For example, in the above simulation (with UASP), we will have the following TCP ports open once the simulator is running:
 - `9809` – command port for node 1 (single channel data)
-- `9810` – DAC data port for node 1 (single output channel)
 - `9819` – command port for node 2 (single channel data)
-- `9820` – DAC data port for node 2 (single output channel)
-- `9829` – command port for node 3 (4-channel data stream)
-- `9830` – DAC data port for node 3 (single output channel)
+- `9829` – command port for node 3 (4-channel data)
 
 ADC data can be streamed from any of the nodes by sending a `istart` command and specifying the UDP port to stream the data to.
 
 > [!TIP]
-[UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators allow us to specify the UDP port to connect to in the `modem.toml`. A minimal example `modem.toml` is shown below:
+[UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators allow us to specify the UASP port to connect to in the `modem.toml`. A minimal example `modem.toml` is shown below:
 
 ```toml
 [input]
-analoginterface = "SoundcardDAQ"    # use UASP protocol
-baseport = 9819                     # with control port 9819, DAQ data port 9820
+analoginterface = "UASP2DAQ"        # use UASP2 protocol
+port = 9819                         # with control port 9819
 
 [bb]
 fc = 24000                          # carrier frequency of 24 kHz
@@ -79,7 +79,7 @@ fc = 24000                          # carrier frequency of 24 kHz
 
 ### Extending / Contributing
 
-While the Virtual Acoustic Ocean currently only supports the [UASP](./docs/uasp-protocol.md), the code is designed to easily allow users to implement their own streaming protocols. If you implement a standard protocol that you feel may be useful to others, please do consider contributing the implementation back to this repository via a pull request (PR).
+While the Virtual Acoustic Ocean currently only supports [UASP](./docs/uasp-protocol.md) and [UASP2](./docs/uasp2-protocol.md), the code is designed to easily allow users to implement their own streaming protocols. If you implement a standard protocol that you feel may be useful to others, please do consider contributing the implementation back to this repository via a pull request (PR).
 
 To implement a new protocol, create a new data type (e.g. `MyProtocol`) and support the following API:
 ```julia
