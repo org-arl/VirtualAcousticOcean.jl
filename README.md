@@ -40,7 +40,7 @@ run(sim)                                            # start simulation (non-bloc
 Any number of nodes may be added to a simulation. Both nodes above will be accessible over TCP ports (`9809` and `9819` respectively) using the [UnetStack acoustic streaming protocol v2](./docs/uasp2-protocol.md) (UASP2). [UnetStack](http://www.unetstack.net) 5 based modems and software-defined modem simulators support the UASP2 protocol out-of-the-box.
 
 > [!TIP]
-Previously we recommended the use of UASP protocol that used UDP to stream acoustic data. We now recommend using UASP2, which uses a combination of TCP and UDP for improved robustness.
+Previously we recommended the use of UASP protocol that used UDP to stream acoustic data. We now recommend using UASP2, which uses a combination of TCP and UDP for improved robustness. However, UnetStack 4 devices that only support [UASP](./docs/uasp-protocol.md) may use that protocol instead.
 
 Nodes may have an array of hydrophones, if desired. To define an array, each hydrophone location relative to the node location is specified using a keyword parameter `relpos`. For example:
 ```julia
@@ -58,7 +58,7 @@ close(sim)
 
 ### Connecting to the simulator
 
-Once the simulation is up and running, we can connect to the Virtual Acoustic Ocean and stream acoustic data from various nodes. For example, in the above simulation (with UASP), we will have the following TCP ports open once the simulator is running:
+Once the simulation is up and running, we can connect to the Virtual Acoustic Ocean and stream acoustic data from various nodes. For example, in the above simulation (with UASP2), we will have the following TCP ports open once the simulator is running:
 - `9809` – command port for node 1 (single channel data)
 - `9819` – command port for node 2 (single channel data)
 - `9829` – command port for node 3 (4-channel data)
@@ -66,7 +66,7 @@ Once the simulation is up and running, we can connect to the Virtual Acoustic Oc
 ADC data can be streamed from any of the nodes by sending a `istart` command and specifying the UDP port to stream the data to.
 
 > [!TIP]
-[UnetStack](www.unetstack.net) 4 based modems and software-defined model simulators allow us to specify the UASP port to connect to in the `modem.toml`. A minimal example `modem.toml` is shown below:
+[UnetStack](www.unetstack.net) 5 based modems and software-defined model simulators allow us to specify the TCP port to connect to in the `modem.toml`. A minimal example `modem.toml` is shown below:
 
 ```toml
 [input]
@@ -91,7 +91,7 @@ Base.close(conn::MyProtocol)
 ```
 `data` matrix contains samples scaled in the ±1 range, with each column containing data for one channel. `timestamp` are in µs from an arbitrary time origin. `seqno` is a running packet number for streaming data. `id` is an opaque numeric ID identifying the transmission for which an event (transmission start `ostart` and transmission end `ostop`) is sent.
 
-For detailed documentation on what each API function should do, refer to the UASP [implementation](./src/uasp.jl).
+For detailed documentation on what each API function should do, refer to the [UASP2 implementation](./src/uasp2.jl).
 
 The protocol implementation may call the following API:
 ```julia
