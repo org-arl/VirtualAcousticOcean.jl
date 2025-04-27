@@ -1,7 +1,7 @@
 name = "VirtualAcousticOcean"
 uuid = "629e117c-1786-4222-ab4a-1acab234d923"
 authors = ["Mandar Chitre <mandar@nus.edu.sg>"]
-version = "0.5.0"
+version = "0.6.0"
 
 [deps]
 Base64 = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
@@ -12,5 +12,5 @@ UnderwaterAcoustics = "0efb1f7a-1ce7-46d2-9f48-546a4c8fbb99"
 [compat]
 Base64 = "1"
 JSON = "0.21"
-UnderwaterAcoustics = "0.3,0.4"
-julia = "1.6"
+UnderwaterAcoustics = "0.4"
+julia = "1.9"

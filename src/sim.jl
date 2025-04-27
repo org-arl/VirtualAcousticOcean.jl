@@ -1,7 +1,6 @@
 using UnderwaterAcoustics
-import UnderwaterAcoustics: environment
 
-export Simulation, addnode!, transmit, record, stop
+export Simulation, addnode!
 
 ################################################################################
 ### types
@@ -33,13 +32,14 @@ end
 """
 Virtual acoustic ocean simulation.
 """
-Base.@kwdef struct Simulation{T}
-  model::T
+Base.@kwdef struct Simulation{T1,T2}
+  model::T1
   nodes::Vector{Node} = Node[]
   frequency::Float64                    # nominal frequency (Hz)
-  irate::Float64 = 96000.0              # ADC samples/s
+  noise::T2 = RedGaussianNoise(1e6)     # noise model
+  irate::Float64 = 4 * frequency        # ADC samples/s
   iblksize::Int = 0                     # ADC samples
-  orate::Float64 = 192000.0             # DAC samples/s
+  orate::Float64 = 8 * frequency        # DAC samples/s
   txref::Float64 = 185.0                # dB re µPa @ 1m
   rxref::Float64 = -190.0               # dB re 1/µPa
   task::SimTask = SimTask(0.0, 0, nothing)
@@ -50,18 +50,19 @@ end
 ### Simulation methods
 
 """
-    Simulation(model, frequency; irate, iblksize, orate, obufsize, txref, rxref)
+    Simulation(model, frequency; kwargs...)
 
 Create a simulation based on a propagation `model` with a nomimal `frequency`
 (in Hz). The `model` is an 2½D or 3D acoustic propagation model compatible
 with `UnderwaterAcoustics.jl`.
 
 Optional parameters:
-- `irate`: ADC frame rate for sampling aoustic signal (samples/s)
+- `irate`: ADC frame rate for sampling acoustic signal (samples/s)
 - `iblksize`: ADC block size for streaming acoustic signal (samples, 0 for auto)
 - `orate`: DAC frame rate for transmitting acoustic signal (samples/s)
 - `txref`: Conversion between DAC input and acoustic source level (dB re µPa @ 1m)
 - `rxref`: Conversion between acoustic receive level and ADC output (dB re 1/µPa)
+- `noise`: Noise model for the simulation (default: RedGaussianNoise(1e6))
 """
 Simulation(model, frequency; kwargs...) = Simulation(; model, frequency, kwargs...)
 
@@ -112,7 +113,7 @@ function _run(sim::Simulation, task::SimTask)
       x = Matrix{Float32}(undef, iblksize, length(node.tapes))
       for i ∈ eachindex(node.tapes)
         x[:,i] .= read(node.tapes[i], task.t, iblksize)
-        x[:,i] .+= sf * real(record(noise(environment(sim.model)), iblksize/sim.irate, sim.irate))
+        x[:,i] .+= sf * rand(sim.noise, iblksize; fs=sim.irate)
       end
       stream(sim, node, task.t, x)
     end
@@ -217,7 +218,7 @@ end
 Transmit signal `x` from `node` at time index `t`. The transmitter is assumed to be
 half duplex and does not recieve its own transmission.
 """
-function transmit(sim::Simulation, node::Node, t, x)
+function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
   node.mute && return
   fs = sim.irate
   if sim.orate != fs
@@ -228,9 +229,11 @@ function transmit(sim::Simulation, node::Node, t, x)
   tx = [AcousticSource(txpos[ch]..., sim.frequency) for ch ∈ 1:size(x,2)]
   rxnodes = filter(n -> n != node, sim.nodes)
   rx = mapreduce(n -> [AcousticReceiver((n.pos .+ p)...) for p ∈ n.relpos], vcat, rxnodes)
-  arr = [arrivals(sim.model, tx1, rx1) for tx1 ∈ tx, rx1 ∈ rx]
+  #arr = [arrivals(sim.model, tx1, rx1) for tx1 ∈ tx, rx1 ∈ rx]
   sf = 10 ^ ((sim.txref + node.ogain) / 20)
-  y = UnderwaterAcoustics.Recorder(nothing, tx, rx, arr)(sf * x; fs, reltime=false)
+  ch = channel(sim.model, tx, rx, fs)
+  y = transmit(ch, sf * x; fs, abstime=true)
+  #y = UnderwaterAcoustics.Recorder(nothing, tx, rx, arr)(sf * x; fs, reltime=false)
   j = 1
   for node ∈ rxnodes
     sf = 10 ^ ((sim.rxref + node.igain) / 20)
@@ -252,7 +255,7 @@ Start DAC output. If time `t` (in µs) is in the past, output starts immediately
 is an opaque identifier for the transmission to be passed back during transmission
 start/stop events.
 """
-function transmit((sim, node)::Tuple{Simulation,Node}, t, x, id)
+function UnderwaterAcoustics.transmit((sim, node)::Tuple{Simulation,Node}, t, x, id)
   ti_start = time_samples(sim, t)
   ti_start = max(ti_start, sim.task.t)
   ti_end = ti_start + round(Int, size(x,1) / sim.orate * sim.irate)

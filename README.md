@@ -6,7 +6,7 @@
 The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayModel`](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_pekeris.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams simulate analog-to-digital convertors (ADC) and digital-to-analog convertors (DAC) in acoustic systems.
 
 > [!TIP]
-If you only need offline acoustic simulations, you may want to consider using the [acoustic simulation API](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html#Acoustic-simulations) in `UnderwaterAcoustics.jl` directly instead.
+If you only need offline acoustic simulations, you may want to consider using the [acoustic simulation API](https://org-arl.github.io/UnderwaterAcoustics.jl/quickstart.html#channel-modeling) in `UnderwaterAcoustics.jl` directly instead.
 
 ### Installation
 
@@ -23,9 +23,9 @@ using UnderwaterAcoustics
 
 env = UnderwaterEnvironment(
   seabed = SandyClay,                 # sandy-clay seabed
-  bathymetry = ConstantDepth(40.0)    # 40m water depth
+  bathymetry = 40.0                   # 40m water depth
 )
-pm = PekerisRayModel(env, 7)          # 7-ray Pekeris ray model
+pm = PekerisRayTracer(env)            # Pekeris ray model
 ```
 
 We then define a simulation using that environment, adding acoustic nodes to it:
