@@ -63,6 +63,9 @@ Optional parameters:
 - `txref`: Conversion between DAC input and acoustic source level (dB re µPa @ 1m)
 - `rxref`: Conversion between acoustic receive level and ADC output (dB re 1/µPa)
 - `noise`: Noise model for the simulation (default: RedGaussianNoise(1e6))
+
+If `irate` is not specified, it defaults to 4 × `frequency`. If `orate` is not
+specified, it defaults to 8 × `frequency`.
 """
 Simulation(model, frequency; kwargs...) = Simulation(; model, frequency, kwargs...)
 
