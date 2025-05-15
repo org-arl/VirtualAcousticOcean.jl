@@ -42,6 +42,7 @@ Base.@kwdef struct Simulation{T1,T2}
   orate::Float64 = 8 * frequency        # DAC samples/s
   txref::Float64 = 185.0                # dB re µPa @ 1m
   rxref::Float64 = -190.0               # dB re 1/µPa
+  txdelay::Float64 = 0.1                # min time to transmit from ostart (s)
   task::SimTask = SimTask(0.0, 0, nothing)
   timers::Vector{Tuple{Int,Any}} = Tuple{Int,Any}[]
 end
@@ -52,7 +53,7 @@ end
 """
     Simulation(model, frequency; kwargs...)
 
-Create a simulation based on a propagation `model` with a nomimal `frequency`
+Create a simulation based on a propagation `model` with a nominal `frequency`
 (in Hz). The `model` is an 2½D or 3D acoustic propagation model compatible
 with `UnderwaterAcoustics.jl`.
 
@@ -128,7 +129,6 @@ function _run(sim::Simulation, task::SimTask)
   end
 end
 
-# choose a block size that allows a data block to fit within an MTU of 1430 bytes or so
 function _iblksize(sim::Simulation)
   sim.iblksize > 0 && return sim.iblksize
   maxch = maximum(node -> length(node.tapes), sim.nodes)
@@ -219,10 +219,10 @@ end
     transmit(sim::Simulation, node::Node, t, x)
 
 Transmit signal `x` from `node` at time index `t`. The transmitter is assumed to be
-half duplex and does not recieve its own transmission.
+half duplex and does not receive its own transmission.
 """
 function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
-  node.mute && return
+  node.mute && return sim.task.t
   fs = sim.irate
   if sim.orate != fs
     n = round(Int, sim.orate/sim.irate)
@@ -232,20 +232,19 @@ function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
   tx = [AcousticSource(txpos[ch]..., sim.frequency) for ch ∈ 1:size(x,2)]
   rxnodes = filter(n -> n != node, sim.nodes)
   rx = mapreduce(n -> [AcousticReceiver((n.pos .+ p)...) for p ∈ n.relpos], vcat, rxnodes)
-  #arr = [arrivals(sim.model, tx1, rx1) for tx1 ∈ tx, rx1 ∈ rx]
   sf = 10 ^ ((sim.txref + node.ogain) / 20)
   ch = channel(sim.model, tx, rx, fs)
-  y = transmit(ch, sf * x; fs, abstime=true)
-  #y = UnderwaterAcoustics.Recorder(nothing, tx, rx, arr)(sf * x; fs, reltime=false)
+  y = samples(transmit(ch, sf * x; fs, abstime=true))
   j = 1
+  t = max(t, sim.task.t + time_samples(sim, sim.txdelay * 1e6))
   for node ∈ rxnodes
     sf = 10 ^ ((sim.rxref + node.igain) / 20)
     for tape ∈ node.tapes
-      push!(tape, t, sf * y[:,j])
+      push!(tape, t, Float32.(sf * y[:,j]))
       j += 1
     end
   end
-  nothing
+  t
 end
 
 ################################################################################
@@ -260,9 +259,8 @@ start/stop events.
 """
 function UnderwaterAcoustics.transmit((sim, node)::Tuple{Simulation,Node}, t, x, id)
   ti_start = time_samples(sim, t)
-  ti_start = max(ti_start, sim.task.t)
+  ti_start = transmit(sim, node, ti_start, x)
   ti_end = ti_start + round(Int, size(x,1) / sim.orate * sim.irate)
-  transmit(sim, node, ti_start, x)
   schedule(sim, ti_start, t -> node.conn === nothing || event(node.conn, time_µs(sim, t), "ostart", id))
   schedule(sim, ti_end, t -> node.conn === nothing || event(node.conn, time_µs(sim, t), "ostop", id))
 end
