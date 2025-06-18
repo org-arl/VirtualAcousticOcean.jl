@@ -1,6 +1,7 @@
 using Sockets
 using JSON
 using Base64: base64decode
+import DirectSockets
 
 export UASP2
 
@@ -9,6 +10,10 @@ export UASP2
 
 const OBUFSIZE = 1920000          # DAC samples
 
+const SOL_SOCKET = 1
+const SO_SNDBUF = 7
+const RCVBUF_SIZE = 8388608
+
 """
 UnetStack acoustic streaming protocol v2.
 """
@@ -16,7 +21,7 @@ mutable struct UASP2
   const client::Any                       # opaque client handle
   const csvr::Sockets.TCPServer           # TCP command server
   csock::Union{TCPSocket,Nothing}         # TCP command socket
-  const dsock::UDPSocket                  # UDP socket to send data
+  const dsock::DirectSockets.UDPSocket    # UDP socket to send data
   const port::Int                         # TCP port number
   const ipaddr::IPAddr                    # IP address to bind to
   const obuf::Vector{Float32}             # output signal buffer (DAC)
@@ -36,7 +41,10 @@ daemon only binds to localhost. The `client` must support the protocol interface
 methods (see `Node` for details).
 """
 function UASP2(client, port::Int, ipaddr::IPAddr=Sockets.localhost)
-  UASP2(client, listen(ipaddr, port), nothing, UDPSocket(), port, ipaddr, Float32[], nothing, 0)
+  dsock = DirectSockets.UDPSocket()
+  buf = Ref(Cint(RCVBUF_SIZE))
+  @ccall setsockopt(dsock.handle::Cint, SOL_SOCKET::Cint, SO_SNDBUF::Cint, buf::Ptr{Cvoid}, sizeof(Cint)::UInt32)::Cint
+  UASP2(client, listen(ipaddr, port), nothing, dsock, port, ipaddr, Float32[], nothing, 0)
 end
 
 """
@@ -91,6 +99,7 @@ function stream(conn::UASP2, t, seqno, data)
     hdr = UASP_DataHeader(hton(UInt64(t)), hton(UInt32(seqno)), hton(UInt16(size(data,1))), hton(UInt16(size(data,2))))
     bytes = vcat(reinterpret(UInt8, [hdr]), reinterpret(UInt8, hton.(vec(data'))))
     send(conn.dsock, conn.dhost, conn.dport, bytes)
+    # sleep(0.001)
   end
 end
 
