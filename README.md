@@ -73,6 +73,9 @@ ADC data can be streamed from any of the nodes by sending a `istart` command and
 analoginterface = "UASP2DAQ"        # use UASP2 protocol
 port = 9819                         # with control port 9819
 
+[output]
+analoginterface = "UASP2DAQ"        # use UASP2 protocol
+
 [bb]
 fc = 24000                          # carrier frequency of 24 kHz
 ```
