@@ -96,6 +96,7 @@ end
 Start simulation.
 """
 function Base.run(sim::Simulation)
+  Threads.nthreads() == 1 && @warn "Running in single threaded mode...\nStart Julia with `-t auto` to run multithreaded"
   sim.task.task === nothing || error("Simulation already running")
   mod(sim.orate, sim.irate) == 0 || error("orate must be an integer multiple of irate")
   sim.task.t0 = time()
