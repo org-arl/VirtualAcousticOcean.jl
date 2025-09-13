@@ -128,7 +128,7 @@ end
 
 # called when we receive a command
 function _command(conn::UASP, from, cmd)
-  @debug cmd
+  @debug JSON.json(cmd)[1:min(end,120)]
   action = cmd["action"]
   if action == "version"
     ver = pkgversion(@__MODULE__)

@@ -247,6 +247,7 @@ function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
   tx_sf = 10 ^ ((sim.txref + node.ogain) / 20)
   rx_sfs = [10 ^ ((sim.rxref + node.igain) / 20) for node ∈ rxnodes]
   t = max(t, t_now + time_samples(sim, sim.txdelay * 1e6))
+  @debug "TX from $(node.pos) at time $(round(t / sim.irate; digits=3)) s, duration $(round(size(x,1) / sim.irate; digits=3)) s"
   errormonitor(Threads.@spawn _transmit(sim, tx, rx, fs, tx_sf * x, rx_sfs, t, rxnodes))
   t
 end
@@ -261,7 +262,6 @@ function _transmit(sim, tx, rx, fs, x, rx_sfs, t, rxnodes)
       lock(node.lock) do
         push!(tape, t, Float32.(rx_sfs[i] * y[:,j]))
       end
-      @debug "delivered signal to node $i"
       j += 1
     end
   end

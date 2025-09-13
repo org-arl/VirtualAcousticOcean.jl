@@ -104,9 +104,10 @@ function event(conn::UASP2, t, ev, id)
   ntf["event"] = ev
   ntf["time"] = t
   id === nothing || (ntf["id"] = id)
-  @debug JSON.json(ntf)
+  s = JSON.json(ntf)
+  @debug s
   try
-    write(conn.csock, JSON.json(ntf) * '\n')
+    write(conn.csock, s * '\n')
   catch
     # ignore write errors
   end
@@ -114,7 +115,7 @@ end
 
 # called when we receive a command
 function _command(conn::UASP2, cmd)
-  @debug cmd
+  @debug JSON.json(cmd)[1:min(end,120)]
   action = cmd["action"]
   if action == "version"
     ver = pkgversion(@__MODULE__)
@@ -123,8 +124,9 @@ function _command(conn::UASP2, cmd)
     rsp["version"] = "$ver"
     rsp["protocol"] = "0.2.0"
     "id" ∈ keys(cmd) && (rsp["id"] = cmd["id"])
-    @debug JSON.json(rsp)
-    write(conn.csock, JSON.json(rsp) * '\n')
+    s = JSON.json(rsp)
+    @debug s
+    write(conn.csock, s * '\n')
   elseif action == "ireset"
     set!(conn.client, :iseqno, 0)
   elseif action == "istart"
@@ -152,8 +154,9 @@ function _command(conn::UASP2, cmd)
       rsp["param"] = cmd["param"]
       rsp["value"] = v
       "id" ∈ keys(cmd) && (rsp["id"] = cmd["id"])
-      @debug JSON.json(rsp)
-      write(conn.csock, JSON.json(rsp) * '\n')
+      s = JSON.json(rsp)
+      @debug s
+      write(conn.csock, s * '\n')
     end
   elseif action == "set"
     set!(conn.client, Symbol(cmd["param"]), cmd["value"])
