@@ -1,4 +1,5 @@
 using UnderwaterAcoustics
+using Memoization
 
 export Simulation, addnode!
 
@@ -18,6 +19,7 @@ mutable struct Node{T}
   seqno::UInt64                 # input (ADC) stream block sequence number
   tapes::Vector{SignalTape}     # signal tape for each hydrophone
   conn::Union{Nothing,T}        # streaming protocol connector
+  lock::ReentrantLock           # lock to protect tapes
 end
 
 """
@@ -25,7 +27,7 @@ Simulation task information.
 """
 mutable struct SimTask
   t0::Float64                   # start time for the simulation (epoch time)
-  t::Int                        # simulation time index (ADC samples)
+  @atomic t::Int                # simulation time index (ADC samples)
   task::Union{Task,Nothing}     # Julia task handle
 end
 
@@ -43,6 +45,7 @@ Base.@kwdef struct Simulation{T1,T2}
   txref::Float64 = 185.0                # dB re µPa @ 1m
   rxref::Float64 = -190.0               # dB re 1/µPa
   txdelay::Float64 = 0.1                # min time to transmit from ostart (s)
+  mobility::Bool = false                # can node positions change?
   task::SimTask = SimTask(0.0, 0, nothing)
   timers::Vector{Tuple{Int,Any}} = Tuple{Int,Any}[]
 end
@@ -64,9 +67,12 @@ Optional parameters:
 - `txref`: Conversion between DAC input and acoustic source level (dB re µPa @ 1m)
 - `rxref`: Conversion between acoustic receive level and ADC output (dB re 1/µPa)
 - `noise`: Noise model for the simulation (default: RedGaussianNoise(1e6))
+- `mobility`: `true` if node are mobile (default: `false`)
 
 If `irate` is not specified, it defaults to 4 × `frequency`. If `orate` is not
 specified, it defaults to 8 × `frequency`.
+
+Static simulations (`mobility=false`) may cache computations to improve performance.
 """
 Simulation(model, frequency; kwargs...) = Simulation(; model, frequency, kwargs...)
 
@@ -84,7 +90,7 @@ If the node supports multiple transducers/hydrophones, their relative positions
 function addnode!(sim::Simulation, nodepos::Pos3D, protocol, args...; relpos=[(0.0, 0.0, 0.0)], ochannels=1)
   sim.task.task === nothing || error("Cannot add node to running simulation")
   tapes = [SignalTape() for _ ∈ 1:length(relpos)]
-  node = Node{protocol}(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, nothing)
+  node = Node{protocol}(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, nothing, ReentrantLock())
   node.conn = protocol((sim, node), args...)
   push!(sim.nodes, node)
   length(sim.nodes)
@@ -100,7 +106,7 @@ function Base.run(sim::Simulation)
   sim.task.task === nothing || error("Simulation already running")
   mod(sim.orate, sim.irate) == 0 || error("orate must be an integer multiple of irate")
   sim.task.t0 = time()
-  sim.task.t = 0
+  @atomic sim.task.t = 0
   for n ∈ sim.nodes
     run(sim, n)
   end
@@ -112,20 +118,24 @@ function _run(sim::Simulation, task::SimTask)
   sf = 10 ^ (sim.rxref / 20)
   iblksize = _iblksize(sim)
   while task.t0 > 0
-    Δt = task.t0 + (task.t / sim.irate) - time()
+    t = @atomic task.t
+    Δt = task.t0 + (t / sim.irate) - time()
     Δt > 0 && sleep(Δt)
     for node ∈ sim.nodes
       x = Matrix{Float32}(undef, iblksize, length(node.tapes))
       for i ∈ eachindex(node.tapes)
-        x[:,i] .= read(node.tapes[i], task.t, iblksize)
+        lock(node.lock) do
+          x[:,i] .= read(node.tapes[i], t, iblksize)
+        end
         x[:,i] .+= sf * rand(sim.noise, iblksize; fs=sim.irate)
       end
-      stream(sim, node, task.t, x)
+      stream(sim, node, t, x)
     end
-    task.t += iblksize
-    while !isempty(sim.timers) && sim.timers[1][1] ≤ task.t
+    t += iblksize
+    @atomic task.t = t
+    while !isempty(sim.timers) && sim.timers[1][1] ≤ t
       _, callback = popfirst!(sim.timers)
-      @invokelatest callback(task.t)
+      @invokelatest callback(t)
     end
   end
 end
@@ -143,7 +153,7 @@ Stop simulation and remove all nodes.
 """
 function Base.close(sim::Simulation)
   sim.task.t0 = 0.0
-  sim.task.t = 0
+  @atomic sim.task.t = 0
   sim.task.task = nothing
   for node ∈ sim.nodes
     close(sim, node)
@@ -223,7 +233,8 @@ Transmit signal `x` from `node` at time index `t`. The transmitter is assumed to
 half duplex and does not receive its own transmission.
 """
 function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
-  node.mute && return sim.task.t
+  t_now = @atomic sim.task.t
+  node.mute && return t_now
   fs = sim.irate
   if sim.orate != fs
     n = round(Int, sim.orate/sim.irate)
@@ -233,19 +244,30 @@ function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
   tx = [AcousticSource(txpos[ch]..., sim.frequency) for ch ∈ 1:size(x,2)]
   rxnodes = filter(n -> n != node, sim.nodes)
   rx = mapreduce(n -> [AcousticReceiver((n.pos .+ p)...) for p ∈ n.relpos], vcat, rxnodes)
-  sf = 10 ^ ((sim.txref + node.ogain) / 20)
-  ch = channel(sim.model, tx, rx, fs)
-  y = samples(transmit(ch, sf * x; fs, abstime=true))
+  tx_sf = 10 ^ ((sim.txref + node.ogain) / 20)
+  rx_sfs = [10 ^ ((sim.rxref + node.igain) / 20) for node ∈ rxnodes]
+  t = max(t, t_now + time_samples(sim, sim.txdelay * 1e6))
+  errormonitor(Threads.@spawn _transmit(sim, tx, rx, fs, tx_sf * x, rx_sfs, t, rxnodes))
+  t
+end
+
+function _transmit(sim, tx, rx, fs, x, rx_sfs, t, rxnodes)
+  ch = sim.mobility ? channel(sim.model, tx, rx, fs) : @memoize Dict channel(sim.model, tx, rx, fs)
+  y = samples(transmit(ch, x; fs, abstime=true))
   j = 1
-  t = max(t, sim.task.t + time_samples(sim, sim.txdelay * 1e6))
-  for node ∈ rxnodes
-    sf = 10 ^ ((sim.rxref + node.igain) / 20)
+  t_now = @atomic sim.task.t
+  for (i, node) ∈ enumerate(rxnodes)
     for tape ∈ node.tapes
-      push!(tape, t, Float32.(sf * y[:,j]))
+      lock(node.lock) do
+        push!(tape, t, Float32.(rx_sfs[i] * y[:,j]))
+      end
+      @debug "delivered signal to node $i"
       j += 1
     end
   end
-  t
+  if length(rxnodes) > 0 && t_now > t
+    @warn "Computation took too long: RX delayed by $(round(Int, (t_now - t) * 1000 / sim.irate)) ms"
+  end
 end
 
 ################################################################################
@@ -272,7 +294,7 @@ end
 Get parameter `k`. Returns `nothing` is parameter is unknown.
 """
 function Base.get((sim, node)::Tuple{Simulation,Node}, k::Symbol)
-  k === :time && return round(Int, sim.task.t / sim.irate)
+  k === :time && return round(Int, @atomic(sim.task.t) / sim.irate)
   k === :iseqno && return node.seqno
   k === :iblksize && return _iblksize(sim)
   k === :irate && return sim.irate
