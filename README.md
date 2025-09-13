@@ -15,6 +15,9 @@ julia> # press ]
 pkg> add VirtualAcousticOcean
 ```
 
+> [!IMPORTANT]
+> You must run `julia` in multi-threading mode (flag `-t auto` or environment variable `JULIA_NUM_THREADS` set to `auto`) for `VirtualAcousticOcean.jl` to provide good performance. While, it will run in a single-threaded mode, the delivery of frames may be delayed and unreliable. `VirtualAcousticOcean.jl` will print out a WARNING if you accidentally run in single-threaded mode.
+
 ### Setting up a simulation
 
 Setting up a simulation is simple. We first describe an environment and create a propagation model, as one would with the [propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html):
@@ -38,6 +41,8 @@ addnode!(sim, (1000.0, 0.0, -10.0), UASP2, 9819)    # node 2 at 10 m depth, 1 km
 run(sim)                                            # start simulation (non-blocking)
 ```
 Any number of nodes may be added to a simulation. Both nodes above will be accessible over TCP ports (`9809` and `9819` respectively) using the [UnetStack acoustic streaming protocol v2](./docs/uasp2-protocol.md) (UASP2). [UnetStack](http://www.unetstack.net) 5 based modems and software-defined modem simulators support the UASP2 protocol out-of-the-box.
+
+The ports are, by default, only accessible on `localhost`. To make them available on all network interfaces, we need to add an additional argument `ip"0.0.0.0"` (see [`examples/2-node-network.jl`](examples/2-node-network.jl)) for an example.
 
 > [!TIP]
 Previously we recommended the use of UASP protocol that used UDP to stream acoustic data. We now recommend using UASP2, which uses a combination of TCP and UDP for improved robustness. However, UnetStack 4 devices that only support [UASP](./docs/uasp-protocol.md) may use that protocol instead.
