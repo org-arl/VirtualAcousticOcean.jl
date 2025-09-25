@@ -1,0 +1,89 @@
+name: Build and Publish Docker image
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+  workflow_dispatch:
+
+jobs:
+  build-amd64:
+    runs-on: ubuntu-latest   # native x86_64 runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase GITHUB_REPO
+        run: |
+          echo "GITHUB_REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push amd64 image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            -f Dockerfile \
+            -t ghcr.io/${GITHUB_REPO}:amd64 \
+            --push .
+
+  build-arm64:
+    runs-on: ubuntu-22.04-arm   # native ARM64 runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase GITHUB_REPO
+        run: |
+          echo "GITHUB_REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push arm64 image
+        run: |
+          docker buildx build \
+            --platform linux/arm64 \
+            -f Dockerfile \
+            -t ghcr.io/${GITHUB_REPO}:arm64 \
+            --push .
+
+  merge-manifest:
+    runs-on: ubuntu-latest
+    needs: [build-amd64, build-arm64]
+    steps:
+
+      - name: Lowercase GITHUB_REPO
+        run: |
+          echo "GITHUB_REPO=${GITHUB_REPOSITORY,,}" >>${GITHUB_ENV}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          IMAGE=ghcr.io/${GITHUB_REPO}
+          docker manifest create $IMAGE:latest \
+            --amend $IMAGE:amd64 \
+            --amend $IMAGE:arm64
+          docker manifest push $IMAGE:latest
+
+          # optionally also tag releases
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION=${GITHUB_REF_NAME}
+            docker manifest create $IMAGE:$VERSION \
+              --amend $IMAGE:amd64 \
+              --amend $IMAGE:arm64
+            docker manifest push $IMAGE:$VERSION
+          fi
