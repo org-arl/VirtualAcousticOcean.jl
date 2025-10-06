@@ -57,7 +57,7 @@ Create a replay channel model from a `.mat` file containing a baseband replay
 channel.
 
 Supported keyword arguments:
-- `sounspeed`: speed of sound (m/s, default: 1538.9)
+- `soundspeed`: speed of sound (m/s, default: 1538.9)
 - `spreading`: path loss exponent (default: 2, spherical spreading)
 - `scaling`: scale factor (default: 1, see below)
 - `rxs`: indices of receive channels to use (default: 1)
