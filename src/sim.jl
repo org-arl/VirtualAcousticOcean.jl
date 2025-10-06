@@ -1,5 +1,6 @@
 using UnderwaterAcoustics
 using Memoization
+using Statistics
 
 export Simulation, addnode!, ReplayChannelModel
 
