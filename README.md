@@ -31,6 +31,13 @@ env = UnderwaterEnvironment(
 pm = PekerisRayTracer(env)            # Pekeris ray model
 ```
 
+Alternatively, we also now support channel-replay based simulations using [recorded underwater channels](https://org-arl.github.io/UnderwaterAcoustics.jl/replay.html). To setup, a simulation using one of those, we create `pm` from the recorded channel (say `red.mat`):
+```julia
+using VirtualAcousticOcean
+
+pm = ReplayChannelModel("red.mat")
+```
+
 We then define a simulation using that environment, adding acoustic nodes to it:
 ```julia
 using VirtualAcousticOcean
