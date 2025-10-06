@@ -1,7 +1,7 @@
 using UnderwaterAcoustics
 using Memoization
 
-export Simulation, addnode!
+export Simulation, addnode!, ReplayChannelModel
 
 ################################################################################
 ### types
@@ -48,6 +48,36 @@ Base.@kwdef struct Simulation{T1,T2}
   mobility::Bool = false                # can node positions change?
   task::SimTask = SimTask(0.0, 0, nothing)
   timers::Vector{Tuple{Int,Any}} = Tuple{Int,Any}[]
+end
+
+"""
+    ReplayChannelModel(filename; kwargs...)
+
+Create a replay channel model from a `.mat` file containing a baseband replay
+channel.
+
+Supported keyword arguments:
+- `sounspeed`: speed of sound (m/s, default: 1538.9)
+- `spreading`: path loss exponent (default: 2, spherical spreading)
+- `scaling`: scale factor (default: 1, see below)
+- `rxs`: indices of receive channels to use (default: 1)
+- `upsample`: `true` to upsample channel on loading (default: `true`)
+
+Setting `upsample` to `false` saves memory, but increases computation time
+during transmission. If the computation time is too long, the transmissions
+may be lost (warning is issued during runtime if this happens).
+
+
+"""
+struct ReplayChannelModel{T1}
+  c::Float64                            # sound speed (m/s)
+  α::Float64                            # spreading loss exponent (pressure)
+  ch::T1                                # channel model
+  function ReplayChannelModel(filename; soundspeed=soundspeed(), spreading=2, rxs=1, upsample=true)
+    ch = BasebandReplayChannel(filename; rxs, upsample)
+    ch.h ./= median(maximum(abs, ch.h; dims=1))
+    new{typeof(ch)}(soundspeed, spreading / 2, ch)
+  end
 end
 
 ################################################################################
@@ -243,6 +273,7 @@ function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
   txpos = [node.pos .+ p for p ∈ node.relpos]
   tx = [AcousticSource(txpos[ch]..., sim.frequency) for ch ∈ 1:size(x,2)]
   rxnodes = filter(n -> n != node, sim.nodes)
+  length(rxnodes) == 0 && return t_now
   rx = mapreduce(n -> [AcousticReceiver((n.pos .+ p)...) for p ∈ n.relpos], vcat, rxnodes)
   tx_sf = 10 ^ ((sim.txref + node.ogain) / 20)
   rx_sfs = [10 ^ ((sim.rxref + node.igain) / 20) for node ∈ rxnodes]
@@ -253,8 +284,17 @@ function UnderwaterAcoustics.transmit(sim::Simulation, node::Node, t, x)
 end
 
 function _transmit(sim, tx, rx, fs, x, rx_sfs, t, rxnodes)
-  ch = sim.mobility ? channel(sim.model, tx, rx, fs) : @memoize Dict channel(sim.model, tx, rx, fs)
-  y = samples(transmit(ch, x; fs, abstime=true))
+  if sim.model isa ReplayChannelModel
+    p1 = location(first(rx))
+    p2 = location(only(tx))
+    D = hypot(abs(p1.x - p2.x), abs(p1.y - p2.y), abs(p1.z - p2.z))
+    Δt = D / sim.model.c
+    sf = (D ^ -sim.model.α) * absorption(sim.frequency, D)
+    y = sf * vcat(zeros(round(Int, Δt * fs)), samples(transmit(sim.model.ch, vec(x); fs, rxs=1:length(rx))))
+  else
+    ch = sim.mobility ? channel(sim.model, tx, rx, fs) : @memoize Dict channel(sim.model, tx, rx, fs)
+    y = samples(transmit(ch, x; fs, abstime=true))
+  end
   j = 1
   t_now = @atomic sim.task.t
   for (i, node) ∈ enumerate(rxnodes)
