@@ -3,7 +3,7 @@
 
 ### Introduction
 
-The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayModel`](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_pekeris.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams simulate analog-to-digital convertors (ADC) and digital-to-analog convertors (DAC) in acoustic systems.
+The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayTracer`](https://org-arl.github.io/UnderwaterAcoustics.jl/pekeris-rays.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams simulate analog-to-digital convertors (ADC) and digital-to-analog convertors (DAC) in acoustic systems.
 
 > [!TIP]
 If you only need offline acoustic simulations, you may want to consider using the [acoustic simulation API](https://org-arl.github.io/UnderwaterAcoustics.jl/quickstart.html#channel-modeling) in `UnderwaterAcoustics.jl` directly instead.
@@ -20,7 +20,7 @@ pkg> add VirtualAcousticOcean
 
 ### Setting up a simulation
 
-Setting up a simulation is simple. We first describe an environment and create a propagation model, as one would with the [propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html):
+Setting up a simulation is simple. We first describe an environment and create a propagation model, as one would with the [propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/quickstart.html):
 ```julia
 using UnderwaterAcoustics
 
