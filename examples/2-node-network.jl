@@ -30,4 +30,10 @@ addnode!(sim, (1000.0, 0.0,  -5.0), UASP2, 9819, ip"0.0.0.0")
 # run simulation
 
 run(sim)        # start simulation asynchronously
+
+println("Simulation running at $(sim.frequency)Hz with these nodes:")
+for (idx, node) in enumerate(sim.nodes)
+    println(" - Node $(idx) at position $(node.pos) receiving on port $(node.conn.port)")
+end
+
 wait()          # wait forever
