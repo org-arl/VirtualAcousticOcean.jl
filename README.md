@@ -3,7 +3,7 @@
 
 ### Introduction
 
-The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayModel`](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_pekeris.html), [`RaySolver`](https://github.com/org-arl/AcousticRayTracers.jl), [Bellhop, Kraken](https://github.com/org-arl/AcousticsToolbox.jl), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams simulate analog-to-digital convertors (ADC) and digital-to-analog convertors (DAC) in acoustic systems.
+The [`UnderwaterAcoustics.jl`](https://github.com/org-arl/UnderwaterAcoustics.jl) project provides a unified interface to many underwater acoustic propagation models including such as [`PekerisRayTracer`](https://org-arl.github.io/UnderwaterAcoustics.jl/pekeris-rays.html), [`PakerisModeSolver`](https://org-arl.github.io/UnderwaterAcoustics.jl/pekeris-modes.html), [`RaySolver`](https://org-arl.github.io/UnderwaterAcoustics.jl/raysolver.html), [`Bellhop`](https://org-arl.github.io/UnderwaterAcoustics.jl/bellhop.html), [`Kraken`](https://org-arl.github.io/UnderwaterAcoustics.jl/kraken.html), [`Orca`](https://org-arl.github.io/UnderwaterAcoustics.jl/orca.html), etc. This project leverages these models to provide a <u>real-time streaming</u> ocean acoustic simulator for software-only or hardware-in-the-loop simulations. The data streams simulate analog-to-digital convertors (ADC) and digital-to-analog convertors (DAC) in acoustic systems.
 
 > [!TIP]
 If you only need offline acoustic simulations, you may want to consider using the [acoustic simulation API](https://org-arl.github.io/UnderwaterAcoustics.jl/quickstart.html#channel-modeling) in `UnderwaterAcoustics.jl` directly instead.
@@ -38,7 +38,7 @@ The Docker container will run the example simulation in [examples/2-node-network
 
 ### Setting up a simulation
 
-Setting up a simulation is simple. We first describe an environment and create a propagation model, as one would with the [propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/stable/pm_basic.html):
+Setting up a simulation is simple. We first describe an environment and create a propagation model, as one would with the [propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/quickstart.html):
 ```julia
 using UnderwaterAcoustics
 
@@ -47,6 +47,13 @@ env = UnderwaterEnvironment(
   bathymetry = 40.0                   # 40m water depth
 )
 pm = PekerisRayTracer(env)            # Pekeris ray model
+```
+
+Alternatively, we also now support channel-replay based simulations using [recorded underwater channels](https://org-arl.github.io/UnderwaterAcoustics.jl/replay.html). To setup, a simulation using one of those, we create `pm` from the recorded channel (say `red.mat`):
+```julia
+using VirtualAcousticOcean
+
+pm = ReplayChannelModel("red.mat")
 ```
 
 We then define a simulation using that environment, adding acoustic nodes to it:
