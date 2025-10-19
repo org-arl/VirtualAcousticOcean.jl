@@ -45,7 +45,7 @@ Base.@kwdef struct Simulation{T1,T2}
   orate::Float64 = 8 * frequency        # DAC samples/s
   txref::Float64 = 185.0                # dB re µPa @ 1m
   rxref::Float64 = -190.0               # dB re 1/µPa
-  txdelay::Float64 = 0.1                # min time to transmit from ostart (s)
+  txdelay::Float64 = 0.01               # min time to transmit from ostart (s)
   mobility::Bool = false                # can node positions change?
   task::SimTask = SimTask(0.0, 0, nothing)
   timers::Vector{Tuple{Int,Any}} = Tuple{Int,Any}[]
@@ -142,6 +142,12 @@ function Base.run(sim::Simulation)
     run(sim, n)
   end
   sim.task.task = errormonitor(@async _run(sim, sim.task))
+  # warm up - precompile workload
+  for n ∈ sim.nodes
+    precompile(Tuple{typeof(set!), Tuple{typeof(sim),typeof(n)}, Symbol, Float64})
+    transmit((sim, n), 0, reshape(randn(Float32, 1), 1, :)', 0)
+    transmit((sim, n), 0, reshape(randn(Float32, 1), 1, :)', 0)
+  end
   nothing
 end
 
@@ -298,7 +304,13 @@ function _transmit(sim, tx, rx, fs, x, rx_sfs, t, rxnodes)
   end
   j = 1
   t_now = @atomic sim.task.t
+  should_warn = false
   for (i, node) ∈ enumerate(rxnodes)
+    p1 = location(first(tx))
+    p2 = node.pos
+    D = hypot(abs(p1.x - p2[1]), abs(p1.y - p2[2]), abs(p1.z - p2[3]))
+    Δt = D / sim.model.c
+    should_warn |= t_now ≥ t + Δt * fs
     for tape ∈ node.tapes
       lock(node.lock) do
         push!(tape, t, Float32.(rx_sfs[i] * y[:,j]))
@@ -306,8 +318,8 @@ function _transmit(sim, tx, rx, fs, x, rx_sfs, t, rxnodes)
       j += 1
     end
   end
-  if length(rxnodes) > 0 && t_now > t
-    @warn "Computation took too long: RX delayed by $(round(Int, (t_now - t) * 1000 / sim.irate)) ms"
+  if should_warn && length(x) > 1
+    @warn "Computation took too long ($(round(Int, (t_now - t) * 1000 / sim.irate)) ms), transmission may be lost"
   end
 end
 

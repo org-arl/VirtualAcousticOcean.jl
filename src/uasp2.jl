@@ -45,6 +45,7 @@ end
 Start UASP v2 daemon.
 """
 function Base.run(conn::UASP2)
+  base64decode("AAECAwQF")  # warm up Base64 decoder
   @async begin
     while isopen(conn.csvr)
       try
