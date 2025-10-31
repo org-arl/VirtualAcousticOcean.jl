@@ -18,6 +18,24 @@ pkg> add VirtualAcousticOcean
 > [!IMPORTANT]
 > You must run `julia` in multi-threading mode (flag `-t auto` or environment variable `JULIA_NUM_THREADS` set to `auto`) for `VirtualAcousticOcean.jl` to provide good performance. While, it will run in a single-threaded mode, the delivery of frames may be delayed and unreliable. `VirtualAcousticOcean.jl` will print out a WARNING if you accidentally run in single-threaded mode.
 
+### Docker
+
+A Docker image is available for users who do not wish to install Julia and the package dependencies. The image is available on [GitHub Container Registry](http://ghcr.io/org-arl/virtualacousticocean) and it can be used to run the example simulation as follows:
+
+```bash
+docker run --rm \
+  -v $PWD:/sims \
+  -p 9809:9809 \
+  -p 9819:9819 \
+  ghcr.io/org-arl/virtualacousticocean.jl:latest \
+  /sims/examples/2-node-network.jl
+```
+
+The Docker container will run the example simulation in [examples/2-node-network.jl](examples/2-node-network.jl) and expose the two nodes on TCP ports `9809` and `9819` on the host machine. You may then connect to these ports using [UnetStack](http://www.unetstack.net) 5 based modems or software-defined modem simulators.
+
+- The `-v $PWD:/sims` mounts the current directory on the host to `/sims` in the container. This allows you to run your own simulation scripts in the container. `/sims` is the working directory in the container.
+- The `-p 9809:9809 -p 9819:9819` exposes the TCP ports on the host machine. You have to expose the ports of all nodes you wish to connect to from outside the container.
+
 ### Setting up a simulation
 
 Setting up a simulation is simple. We first describe an environment and create a propagation model, as one would with the [propagation modeling toolkit](https://org-arl.github.io/UnderwaterAcoustics.jl/quickstart.html):
