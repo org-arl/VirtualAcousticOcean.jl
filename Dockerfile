@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-FROM julia:1.11.7-trixie
+FROM julia:1.12.1-trixie
 
 # Set env for non-interactive installs
 ENV JULIA_DEPOT_PATH=/usr/local/julia
