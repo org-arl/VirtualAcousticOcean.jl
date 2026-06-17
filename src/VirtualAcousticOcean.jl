@@ -9,5 +9,6 @@ include("tape.jl")
 include("sim.jl")
 include("uasp.jl")
 include("uasp2.jl")
+include("ui.jl")
 
 end # module

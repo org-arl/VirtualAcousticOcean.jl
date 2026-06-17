@@ -1,0 +1,16 @@
+[environment]
+surface = "SeaState2"
+seabed = "SandyClay"
+bathymetry = 50.0
+
+[acoustics]
+frequency = 24000.0
+max_bounces = 2
+
+[[node]]
+location = [0,0,-10]
+port = 9001
+
+[[node]]
+location = [0,1000,-10]
+port = 9002
