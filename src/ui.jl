@@ -12,7 +12,7 @@ sim::Union{Simulation,Nothing} = nothing
 Start web UI for simulation configuration and control. The UI will read the
 simulation configuration from `filename` and allow the user to start, stop,
 and restart the simulation, as well as view the current status. The UI is
-served at on port 8080 by default, but the port and other options can be
+served on port 8080 by default, but the port and other options can be
 configured via `kwargs`. If `async` is set to `true`, the function will
 return the server object immediately, allowing the caller to manage the server
 lifecycle. Otherwise, the function will block until the server is stopped.
@@ -22,17 +22,20 @@ For details on supported `kwargs`, see the documentation for `Oxygen.serve`.
 function webui(filename; async=false, kwargs...)
   get("/config/load") do
     try
-      join(readlines(filename), "\n")
-    catch
+      read(filename, String)
+    catch e
+      @warn string(e)
       "# Could not read configuration file"
     end
   end
   post("/config/save") do req::HTTP.Request
     s = String(req.body)
     try
-      open(filename, "w") do f
+      tmp_filename = filename * ".tmp"
+      open(tmp_filename, "w") do f
         print(f, s)
       end
+      mv(tmp_filename, filename; force=true)
       "OK"
     catch e
       string(e)
@@ -80,7 +83,7 @@ function webui(filename; async=false, kwargs...)
     end
   end
   get("/") do
-    join(readlines(joinpath(@__DIR__, "webui.html")), "\n")
+    read(joinpath(@__DIR__, "webui.html"), String)
   end
   srv = serve(; async, kwargs...)
   async && return srv
@@ -162,8 +165,12 @@ function load(filename)
   toml = TOML.parsefile(filename)
   e = get(toml, "environment", Dict())
   bathymetry = get(e, "bathymetry", 100.0)
-  surface = bcs[get(e, "surface", "PressureReleaseBoundary")]
-  seabed = bcs[get(e, "seabed", "SandyClay")]
+  s = get(e, "surface", "PressureReleaseBoundary")
+  s ∈ keys(bcs) || error("Unsupported surface boundary condition: $s")
+  surface = bcs[s]
+  s = get(e, "seabed", "SandyClay")
+  s ∈ keys(bcs) || error("Unsupported seabed boundary condition: $s")
+  seabed = bcs[s]
   env = UnderwaterEnvironment(; bathymetry, surface, seabed)
   a = get(toml, "acoustics", Dict())
   kwargs = Dict{Symbol,Any}()

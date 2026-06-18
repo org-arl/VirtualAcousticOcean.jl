@@ -120,7 +120,7 @@ For details of the file format, see documentation for `VirtualAcousticOcean.load
 
 An experimental web interface to manage configuration and start/stop VAO is also implemented. It can be started using:
 ```julia
- VirtualAcousticOcean.webui("/tmp/vao.toml")
+VirtualAcousticOcean.webui("/tmp/vao.toml")
 ```
 where `/tmp/vao.toml` is the path to a TOML configuration file. Changes to the configuration using the web API are saved back to the same file. For more information, see documentation for `VirtualAcousticOcean.webui`.
 
