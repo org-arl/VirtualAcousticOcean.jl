@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VAO Simulator Control</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f8;
+            --panel-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #cccccc;
+            --primary-color: #007acc;
+            --primary-hover: #005f9e;
+            --success-color: #28a745;
+            --success-hover: #218838;
+            --danger-color: #dc3545;
+            --danger-hover: #c82333;
+            --warning-color: #ffc107;
+            --warning-hover: #e0a800;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px 20px;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s, opacity 0.2s;
+            color: white;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #btn-revert, #btn-save { background-color: var(--primary-color); }
+        #btn-revert:hover:not(:disabled), #btn-save:hover:not(:disabled) { background-color: var(--primary-hover); }
+
+        #btn-start { background-color: var(--success-color); }
+        #btn-start:hover:not(:disabled) { background-color: var(--success-hover); }
+
+        #btn-stop { background-color: var(--danger-color); }
+        #btn-stop:hover:not(:disabled) { background-color: var(--danger-hover); }
+
+        #btn-restart { background-color: var(--warning-color); color: #212529; }
+        #btn-restart:hover:not(:disabled) { background-color: var(--warning-hover); }
+
+        main {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            min-height: 0; /* Important for flexbox scrolling inside */
+        }
+
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 10px 15px;
+            background-color: #e9ecef;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+        }
+
+        #editor {
+            flex: 1;
+            width: 100%;
+            border: none;
+            padding: 15px;
+            resize: none;
+            font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 14px;
+            box-sizing: border-box;
+            outline: none;
+        }
+
+        #status {
+            flex: 1;
+            margin: 0;
+            padding: 15px;
+            overflow-y: auto;
+            font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Virtual Acoustic Ocean</h1>
+        <div class="controls">
+            <button id="btn-revert" onclick="revertFile()" disabled>Revert Config</button>
+            <button id="btn-save" onclick="saveFile()" disabled>Save Config</button>
+            <div style="width: 20px;"></div> <!-- Spacer -->
+            <button id="btn-start" onclick="controlVao('start')" disabled>Start VAO</button>
+            <button id="btn-stop" onclick="controlVao('stop')" disabled>Stop VAO</button>
+            <button id="btn-restart" onclick="controlVao('restart')" disabled>Restart VAO</button>
+        </div>
+    </header>
+
+    <main>
+        <div class="panel">
+            <div class="panel-header">Configuration Editor</div>
+            <textarea id="editor" spellcheck="false" oninput="checkDirtyState()"></textarea>
+        </div>
+        <div class="panel">
+            <div class="panel-header">Simulator Status</div>
+            <pre id="status">Loading...</pre>
+        </div>
+    </main>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const statusOutput = document.getElementById('status');
+        const btnRevert = document.getElementById('btn-revert');
+        const btnSave = document.getElementById('btn-save');
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const btnRestart = document.getElementById('btn-restart');
+
+        let originalConfig = '';
+        let isRunning = false;
+
+        // Configuration Management
+        async function loadConfig() {
+            try {
+                const response = await fetch('/config/load');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const text = await response.text();
+                originalConfig = text;
+                editor.value = text;
+                checkDirtyState();
+            } catch (error) {
+                statusOutput.textContent = "Failed to load config: " + error.message;
+            }
+        }
+
+        async function saveFile() {
+            try {
+                const response = await fetch('/config/save', {
+                    method: 'POST',
+                    body: editor.value
+                });
+                const result = await response.text();
+                if (result.trim() === "OK") {
+                    originalConfig = editor.value;
+                    checkDirtyState();
+                    updateStatus();
+                } else {
+                    statusOutput.textContent = "Failed to save:\n\n" + result + "\n\n" + statusOutput.textContent;
+                }
+            } catch (error) {
+                statusOutput.textContent = "Error saving file: " + error.message;
+            }
+        }
+
+        function revertFile() {
+            editor.value = originalConfig;
+            checkDirtyState();
+            updateStatus();
+        }
+
+        function checkDirtyState() {
+            const isDirty = editor.value !== originalConfig;
+            btnRevert.disabled = !isDirty;
+            btnSave.disabled = !isDirty;
+        }
+
+        // VAO Control
+        async function controlVao(action) {
+            try {
+                const response = await fetch(`/${action}`);
+                const result = await response.text();
+                if (result.trim() !== "OK") {
+                    statusOutput.textContent = `Failed to ${action} VAO:\n\n` + result + `\n\n` + statusOutput.textContent;
+                } else {
+                    updateStatus();
+                }
+            } catch (error) {
+                statusOutput.textContent = `Error during ${action}:\n\n` + error.message + `\n\n` + statusOutput.textContent;
+            }
+        }
+
+        // Status Polling
+        async function updateStatus() {
+            try {
+                const response = await fetch('/status');
+                if (!response.ok) return;
+                const text = await response.text();
+                statusOutput.textContent = text;
+
+                isRunning = text.startsWith("running\n") || text.trim() === "running";
+
+                btnStart.disabled = isRunning;
+                btnStop.disabled = !isRunning;
+                btnRestart.disabled = !isRunning;
+
+            } catch (error) {
+                statusOutput.textContent = "Error connecting to VAO server.";
+                btnStart.disabled = true;
+                btnStop.disabled = true;
+                btnRestart.disabled = true;
+            }
+        }
+
+        // Initialization
+        loadConfig();
+        updateStatus();
+    </script>
+</body>
+</html>

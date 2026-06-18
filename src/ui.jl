@@ -4,29 +4,77 @@ import TOML
 
 export load, webui
 
-const CONFIG_FILENAME = "/tmp/vao.toml"
-
 ## Web UI
 
-function webui(; async=true, kwargs...)
+sim::Union{Simulation,Nothing} = nothing
+
+function webui(filename; async=false, kwargs...)
   get("/config/load") do
     try
-      join(readlines(CONFIG_FILENAME), "\n")
-    catch e
+      join(readlines(filename), "\n")
+    catch
       "# Could not read configuration file"
     end
   end
   post("/config/save") do req::HTTP.Request
-    @info "post" String(req.body)
-    "OK"
+    s = String(req.body)
+    try
+      open(filename, "w") do f
+        print(f, s)
+      end
+      "OK"
+    catch e
+      string(e)
+    end
   end
   get("/status") do
-    "not running"
+    if isnothing(sim)
+      "stopped"
+    else
+      io = IOBuffer()
+      println(io, "running\n")
+      println(io, "Simulation running at $(sim.frequency) Hz with:")
+      for (idx, node) ∈ enumerate(sim.nodes)
+        println(io, " - Node $(idx) at position $(node.pos) receiving on port $(node.conn.port)")
+      end
+      String(take!(io))
+    end
   end
-  get("/restart") do
+  get("/start") do
+    isnothing(sim) || return "already running"
+    try
+      global sim = load(filename)
+      run(sim)
+      "OK"
+    catch e
+      global sim = nothing
+      e isa TOML.ParserError ? sprint(showerror, e) : string(e)
+    end
+  end
+  get("/stop") do
+    isnothing(sim) && return "not running"
+    close(sim)
+    global sim = nothing
     "OK"
   end
-  serve(; async, kwargs...)
+  get("/restart") do
+    isnothing(sim) || close(sim)
+    try
+      global sim = load(filename)
+      run(sim)
+      "OK"
+    catch e
+      global sim = nothing
+      e isa TOML.ParserError ? sprint(showerror, e) : string(e)
+    end
+  end
+  get("/") do
+    join(readlines(joinpath(@__DIR__, "webui.html")), "\n")
+  end
+  srv = serve(; async, kwargs...)
+  async && return srv
+  isnothing(sim) || close(sim)
+  global sim = nothing
 end
 
 ## TOML based simulation descriptor loader
