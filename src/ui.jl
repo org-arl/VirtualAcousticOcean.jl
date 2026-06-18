@@ -2,12 +2,23 @@ using Oxygen
 using HTTP
 import TOML
 
-export load, webui
-
 ## Web UI
 
 sim::Union{Simulation,Nothing} = nothing
 
+"""
+    webui(filename; async=false, kwargs...)
+
+Start web UI for simulation configuration and control. The UI will read the
+simulation configuration from `filename` and allow the user to start, stop,
+and restart the simulation, as well as view the current status. The UI is
+served at on port 8080 by default, but the port and other options can be
+configured via `kwargs`. If `async` is set to `true`, the function will
+return the server object immediately, allowing the caller to manage the server
+lifecycle. Otherwise, the function will block until the server is stopped.
+
+For details on supported `kwargs`, see the documentation for `Oxygen.serve`.
+"""
 function webui(filename; async=false, kwargs...)
   get("/config/load") do
     try
@@ -119,7 +130,33 @@ const bcs = Dict(
 """
     load(filename)::Simulation
 
-Load simulation from TOML descriptor.
+Builds a simulation from a TOML descriptor. The TOML file should have the following
+structure:
+```toml
+[environment]
+bathymetry = 100.0
+surface = "SeaState3"
+seabed = "SandyClay"
+
+[acoustics]
+frequency = 24000.0
+
+[[node]]
+location = [x, y, z]
+port = 9001
+```
+
+Node entries can be repeated to add multiple nodes. If `port` is not specified,
+it will be assigned automatically starting from 9001. The `surface` and `seabed`
+values are named boundary conditions from `UnderwaterAcoustics.jl`. If not
+specified, they will default to `PressureReleaseBoundary` and `SandyClay`,
+respectively. The `bathymetry` value is the depth of the water column in meters,
+and defaults to 100.0 if not specified. The `frequency` is nominal acoustic
+frequency in Hz, and defaults to 24000. Other model-specific parameters can
+also be included in the `[acoustics]` section and will be passed as keyword
+arguments to the model constructor. Currently, only the `PekerisRayTracer`
+model is supported, but this may be extended in the future to allow selection
+of different models.
 """
 function load(filename)
   toml = TOML.parsefile(filename)

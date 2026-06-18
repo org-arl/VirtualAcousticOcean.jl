@@ -1,6 +1,6 @@
 name = "VirtualAcousticOcean"
 uuid = "629e117c-1786-4222-ab4a-1acab234d923"
-version = "0.8.1"
+version = "0.9.0"
 authors = ["Mandar Chitre <mandar@nus.edu.sg>"]
 
 [deps]

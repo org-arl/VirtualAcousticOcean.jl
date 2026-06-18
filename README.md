@@ -110,6 +110,20 @@ analoginterface = "UASP2DAQ"        # use UASP2 protocol
 fc = 24000                          # carrier frequency of 24 kHz
 ```
 
+### TOML configuration and web interface
+
+An experimental API for TOML configuration is available. A simulation can be built from the TOML configuration:
+```julia
+sim = VirtualAcousticOcean.load("examples/2-node-network.toml")
+```
+For details of the file format, see documentation for `VirtualAcousticOcean.load`.
+
+An experimental web interface to manage configuration and start/stop VAO is also implemented. It can be started using:
+```julia
+ VirtualAcousticOcean.webui("/tmp/vao.toml")
+```
+where `/tmp/vao.toml` is the path to a TOML configuration file. Changes to the configuration using the web API are saved back to the same file. For more information, see documentation for `VirtualAcousticOcean.webui`.
+
 ### Extending / Contributing
 
 While the Virtual Acoustic Ocean currently only supports [UASP](./docs/uasp-protocol.md) and [UASP2](./docs/uasp2-protocol.md), the code is designed to easily allow users to implement their own streaming protocols. If you implement a standard protocol that you feel may be useful to others, please do consider contributing the implementation back to this repository via a pull request (PR).
