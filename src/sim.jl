@@ -63,6 +63,13 @@ Supported keyword arguments:
 - `scaling`: scale factor (default: 1, see below)
 - `rxs`: indices of receive channels to use (default: 1)
 - `upsample`: `true` to upsample channel on loading (default: `true`)
+- `offset`: replay time at the start of the simulation (s, default: 0)
+
+Replay time advances in lockstep with simulation time, so that transmissions
+close in simulation time are also close in replay time. When replay time
+reaches the end of the recording, it reflects and runs backwards (and reflects
+again at the beginning), so that a simulation may run for longer than the
+recording. `offset` sets the replay time corresponding to simulation start.
 
 Setting `upsample` to `false` saves memory, but increases computation time
 during transmission. If the computation time is too long, the transmissions
@@ -73,11 +80,12 @@ may be lost (warning is issued during runtime if this happens).
 struct ReplayChannelModel{T1}
   c::Float64                            # sound speed (m/s)
   α::Float64                            # spreading loss exponent (pressure)
+  offset::Float64                       # replay time at simulation start (s)
   ch::T1                                # channel model
-  function ReplayChannelModel(filename; soundspeed=soundspeed(), spreading=2, rxs=1, upsample=true)
+  function ReplayChannelModel(filename; soundspeed=soundspeed(), spreading=2, rxs=1, upsample=true, offset=0.0)
     ch = BasebandReplayChannel(filename; rxs, upsample)
     ch.h ./= median(maximum(abs, ch.h; dims=1))
-    new{typeof(ch)}(soundspeed, spreading / 2, ch)
+    new{typeof(ch)}(soundspeed, spreading / 2, offset, ch)
   end
 end
 
@@ -120,6 +128,12 @@ If the node supports multiple transducers/hydrophones, their relative positions
 """
 function addnode!(sim::Simulation, nodepos::Pos3D, protocol, args...; relpos=[(0.0, 0.0, 0.0)], ochannels=1)
   sim.task.task === nothing || error("Cannot add node to running simulation")
+  if sim.model isa ReplayChannelModel
+    length(sim.nodes) < 2 || error("Replay channel models support only 2 nodes")
+    ochannels == 1 || error("Replay channel models support only a single transmit channel per node")
+    nch = size(sim.model.ch.h, 2)
+    length(relpos) ≤ nch || error("Replay channel model has only $nch receive channel(s)")
+  end
   tapes = [SignalTape() for _ ∈ 1:length(relpos)]
   node = Node{protocol}(nodepos, relpos, ochannels, 0.0, 0.0, false, 0, tapes, nothing, ReentrantLock())
   node.conn = protocol((sim, node), args...)
@@ -297,7 +311,8 @@ function _transmit(sim, tx, rx, fs, x, rx_sfs, t, rxnodes)
     D = hypot(abs(p1.x - p2.x), abs(p1.y - p2.y), abs(p1.z - p2.z))
     Δt = D / sim.model.c
     sf = (D ^ -sim.model.α) * absorption(sim.frequency, D)
-    y = sf * vcat(zeros(round(Int, Δt * fs)), samples(transmit(sim.model.ch, vec(x); fs, rxs=1:length(rx))))
+    start = _replay_start(sim.model, t / fs, length(vec(x)), fs)
+    y = sf * vcat(zeros(round(Int, Δt * fs)), samples(transmit(sim.model.ch, vec(x); fs, rxs=1:length(rx), start)))
   else
     ch = sim.mobility ? channel(sim.model, tx, rx, fs) : @memoize Dict channel(sim.model, tx, rx, fs)
     y = samples(transmit(ch, x; fs, abstime=true))
@@ -321,6 +336,23 @@ function _transmit(sim, tx, rx, fs, x, rx_sfs, t, rxnodes)
   if should_warn && length(x) > 1
     @warn "Computation took too long ($(round(Int, (t_now - t) * 1000 / sim.irate)) ms), transmission may be lost"
   end
+end
+
+# map simulation time `t` (s) to a replay start index, such that transmissions close
+# in simulation time are equally close in replay time. Simulation time advances replay
+# time 1:1, reflecting at the ends of the recording so that replay time stays within
+# the recording indefinitely. The fold range is independent of signal duration so that
+# the mapping stays in sync across transmissions of different lengths; instead, a start
+# too close to the end of the recording to fit the signal is clamped back (a small,
+# non-accumulating distortion).
+function _replay_start(model::ReplayChannelModel, t, nx, fs)
+  ch = model.ch
+  L, _, T = size(ch.h)
+  Treq = ceil(Int, (ceil(Int, nx * ch.fs / fs) + L - 1) / ch.step) + 2   # conservative estimate of snapshots consumed
+  R = T - 1
+  q = mod((t + model.offset) * ch.fs / ch.step, 2R)
+  start = round(Int, q ≤ R ? q : 2R - q) + 1
+  clamp(start, 1, max(T - Treq, 1))
 end
 
 ################################################################################
