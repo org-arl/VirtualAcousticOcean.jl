@@ -366,11 +366,10 @@ is an opaque identifier for the transmission to be passed back during transmissi
 start/stop events.
 """
 function UnderwaterAcoustics.transmit((sim, node)::Tuple{Simulation,Node}, t, x, id)
-  ti_start = time_samples(sim, t)
-  ti_start = transmit(sim, node, ti_start, x)
+  ti_start = transmit(sim, node, time_samples(sim, t), x)
   ti_end = ti_start + round(Int, size(x,1) / sim.orate * sim.irate)
-  schedule(sim, ti_start, t -> node.conn === nothing || event(node.conn, time_µs(sim, t), "ostart", id))
-  schedule(sim, ti_end, t -> node.conn === nothing || event(node.conn, time_µs(sim, t), "ostop", id))
+  schedule(sim, ti_start, _ -> node.conn === nothing || event(node.conn, time_µs(sim, ti_start), "ostart", id))
+  schedule(sim, ti_end, _ -> node.conn === nothing || event(node.conn, time_µs(sim, ti_end), "ostop", id))
 end
 
 """
